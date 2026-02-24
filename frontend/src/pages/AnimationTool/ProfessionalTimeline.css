@@ -697,38 +697,67 @@
    ============================================ */
 
 .timeline-resizer {
-  height: 6px;
+  height: 8px;
   background: #2d2d2d;
   border-top: 1px solid #3d3d3d;
   cursor: ns-resize;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  transition: background 0.15s, height 0.15s;
   flex-shrink: 0;
+  position: relative;
+}
+
+.timeline-resizer::before {
+  content: '⬍ Drag to resize ⬍';
+  position: absolute;
+  font-size: 10px;
+  color: #666;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  transform: rotate(90deg);
+  white-space: nowrap;
 }
 
 .timeline-resizer:hover {
   background: #3d3d3d;
+  height: 10px;
+}
+
+.timeline-resizer:hover::before {
+  opacity: 1;
 }
 
 .timeline-resizer.resizing {
   background: #0078d4;
+  height: 10px;
+}
+
+.timeline-resizer.resizing::before {
+  opacity: 0;
 }
 
 .resizer-line {
-  width: 40px;
-  height: 2px;
+  width: 50px;
+  height: 3px;
   background: #555;
-  border-radius: 1px;
+  border-radius: 2px;
+  transition: all 0.15s;
 }
 
 .timeline-resizer:hover .resizer-line {
   background: #888;
+  width: 60px;
+  height: 4px;
 }
 
 .timeline-resizer.resizing .resizer-line {
   background: #fff;
+  width: 70px;
+  height: 4px;
+  box-shadow: 0 0 10px rgba(0, 120, 212, 0.5);
 }
 
 /* ============================================
@@ -774,6 +803,29 @@
   .timeline-controls-center,
   .timeline-controls-right {
     flex-wrap: wrap;
+  }
+
+  /* Reduce layer row heights for medium screens */
+  .layer-row {
+    height: 32px;
+  }
+
+  .layer-frames-row {
+    height: 32px;
+  }
+
+  /* Reduce frame ruler height */
+  .frame-ruler {
+    height: 30px;
+  }
+
+  .playhead-handle {
+    height: 30px;
+  }
+
+  .playhead-line {
+    top: 30px;
+    height: calc(100% - 30px);
   }
 }
 

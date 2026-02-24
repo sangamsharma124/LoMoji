@@ -796,6 +796,165 @@ const AnimationTool = () => {
     }
   };
 
+  const exportProject = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      alert('No canvas to export');
+      return;
+    }
+
+    // Show export options dialog
+    const exportFormat = prompt(
+      'Choose export format:\n' +
+      '1. JSON (Project Data)\n' +
+      '2. PNG (Current Frame)\n' +
+      '3. Animated Frames (ZIP)\n' +
+      '\nEnter 1, 2, or 3:'
+    );
+
+    switch (exportFormat) {
+      case '1':
+        exportAsJSON();
+        break;
+      case '2':
+        exportAsPNG();
+        break;
+      case '3':
+        exportAsFrames();
+        break;
+      default:
+        alert('Invalid selection');
+    }
+  };
+
+  const exportAsJSON = () => {
+    const canvas = canvasRef.current;
+
+    const elements = objects.map(obj => ({
+      id: obj.id,
+      type: obj.type,
+      x: obj.x,
+      y: obj.y,
+      width: obj.width,
+      height: obj.height,
+      rotation: obj.rotation,
+      opacity: obj.opacity,
+      fill: obj.fill,
+      stroke: obj.stroke,
+      strokeWidth: obj.strokeWidth,
+      text: obj.text,
+      fontSize: obj.fontSize,
+      fontFamily: obj.fontFamily,
+      emoji: obj.emoji,
+      visible: obj.visible,
+      locked: obj.locked,
+      name: obj.name,
+      keyframes: keyframes[obj.id] ? Object.keys(keyframes[obj.id]).map(property =>
+        keyframes[obj.id][property].map(kf => ({
+          frame: kf.frame,
+          property: property,
+          value: kf.value
+        }))
+      ).flat() : []
+    }));
+
+    const exportData = {
+      projectName: fileName,
+      canvasWidth: canvas?.width || 800,
+      canvasHeight: canvas?.height || 600,
+      backgroundColor: '#ffffff',
+      elements,
+      duration: totalFrames / fps,
+      fps,
+      totalFrames,
+      loop: loopEnabled,
+      exportedAt: new Date().toISOString()
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fileName || 'animation'}.json`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+
+    console.log('✅ Exported as JSON');
+    alert('JSON file downloaded successfully!');
+  };
+
+  const exportAsPNG = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      alert('Canvas not found');
+      return;
+    }
+
+    const dataURL = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = dataURL;
+    link.download = `${fileName || 'animation'}_frame_${currentFrame}.png`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    console.log('✅ Exported current frame as PNG');
+    alert('PNG file downloaded successfully!');
+  };
+
+  const exportAsFrames = async () => {
+    if (objects.length === 0) {
+      alert('No objects to export');
+      return;
+    }
+
+    const originalFrame = currentFrame;
+    const frames = [];
+
+    // Render all frames
+    for (let frame = 0; frame < totalFrames; frame++) {
+      // Temporarily set frame
+      if (onFrameChange) onFrameChange(frame);
+
+      // Wait for render
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Capture frame
+      const canvas = canvasRef.current;
+      if (canvas) {
+        frames.push({
+          frame,
+          dataURL: canvas.toDataURL('image/png')
+        });
+      }
+    }
+
+    // Restore original frame
+    if (onFrameChange) onFrameChange(originalFrame);
+
+    // Download frames as separate images with delay to prevent browser blocking
+    for (let i = 0; i < frames.length; i++) {
+      const { frame, dataURL } = frames[i];
+      await new Promise(resolve => setTimeout(resolve, 100)); // Delay between downloads
+
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = `${fileName || 'animation'}_frame_${String(frame).padStart(4, '0')}.png`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    console.log(`✅ Exported ${frames.length} frames`);
+    alert(`Exported ${frames.length} frames. Check your downloads folder.`);
+  };
+
   const loadProject = async (projectId) => {
     if (!projectId) return;
 
@@ -2217,7 +2376,13 @@ const AnimationTool = () => {
           >
             {isSaving ? 'Saving...' : 'Save'}
           </button>
-          <button className="btn-primary">Export</button>
+          <button
+            className="btn-primary"
+            onClick={exportProject}
+            title="Export animation (JSON, PNG, or Frames)"
+          >
+            Export
+          </button>
         </div>
       </div>
 

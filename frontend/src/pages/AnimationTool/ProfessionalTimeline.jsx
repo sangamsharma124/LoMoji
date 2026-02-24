@@ -41,7 +41,11 @@ const ProfessionalTimeline = ({
   onDeleteLayer,
   onUpdateLayer
 }) => {
-  const [timelineHeight, setTimelineHeight] = useState(400);
+  // Load saved timeline height from localStorage, default to 400px
+  const [timelineHeight, setTimelineHeight] = useState(() => {
+    const saved = localStorage.getItem('lomoji_timeline_height');
+    return saved ? parseInt(saved, 10) : 400;
+  });
   const [isResizing, setIsResizing] = useState(false);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [editingLayerId, setEditingLayerId] = useState(null);
@@ -53,6 +57,11 @@ const ProfessionalTimeline = ({
   const timelineRef = useRef(null);
   const scrollRef = useRef(null);
   const resizerRef = useRef(null);
+
+  // Save timeline height to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('lomoji_timeline_height', timelineHeight.toString());
+  }, [timelineHeight]);
 
   // Frame width in pixels (affected by zoom)
   const frameWidth = 12 * timelineZoom;

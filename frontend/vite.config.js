@@ -27,7 +27,7 @@ export default defineConfig({
     allowedHosts: ['.amazonaws.com', '.builtwithrocket.new', '.iocompute.ai', 'app-fed1c90c.iocompute.ai', 'app-5ac367d2.iocompute.ai'],
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
       }
