@@ -21,10 +21,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: "5173",
+    port: 5173,
     host: "0.0.0.0",
-    strictPort: false,
-    allowedHosts: ['.amazonaws.com', '.builtwithrocket.new', '.iocompute.ai'],
+    strictPort: true,
+    allowedHosts: ['.amazonaws.com', '.builtwithrocket.new', '.iocompute.ai', 'app-fed1c90c.iocompute.ai', 'app-5ac367d2.iocompute.ai'],
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

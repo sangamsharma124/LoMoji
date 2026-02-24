@@ -6,6 +6,8 @@ import UnifiedPresetsPanel from './UnifiedPresetsPanel';
 import TextAssetsPanel from './TextAssetsPanel';
 import AnimationPresetsDialog from './AnimationPresetsDialog';
 import AnimationAssetsPanel from './AnimationAssetsPanel';
+import ProfessionalTimeline from './ProfessionalTimeline';
+import './ProfessionalTimeline.css';
 
 // Easing functions for smooth animations
 const easingFunctions = {
@@ -29,14 +31,19 @@ const AnimationTool = () => {
   const [objects, setObjects] = useState([]);
   const [selectedObjectIds, setSelectedObjectIds] = useState([]);
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
+  const [canvasZoom, setCanvasZoom] = useState(1); // Canvas zoom level
 
   // Timeline State
   const [currentFrame, setCurrentFrame] = useState(0);
-  const [totalFrames, setTotalFrames] = useState(300); // 10 seconds at 30fps
+  const [totalFrames, setTotalFrames] = useState(150); // 5 seconds at 30fps
   const [fps, setFps] = useState(30);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopEnabled, setLoopEnabled] = useState(true);
   const [timelineZoom, setTimelineZoom] = useState(1);
+
+  // Professional Timeline State
+  const [onionSkinEnabled, setOnionSkinEnabled] = useState(false);
+  const [onionSkinRange, setOnionSkinRange] = useState(2);
 
   // Keyframes State
   const [keyframes, setKeyframes] = useState({});
@@ -312,6 +319,153 @@ const AnimationTool = () => {
       setSelectedObjectIds([newObj.id]);
     }
   }, [objects]);
+
+  // Object rename handler for EnhancedTimeline
+  const handleObjectRename = useCallback((objectId, newName) => {
+    setObjects(prev =>
+      prev.map(obj => obj.id === objectId ? { ...obj, name: newName } : obj)
+    );
+  }, []);
+
+  // Keyframe update handler for Enhanced Timeline
+  const updateKeyframeValue = useCallback((objectId, property, frame, newValue) => {
+    setKeyframes(prev => {
+      const newKeyframes = { ...prev };
+      if (newKeyframes[objectId] && newKeyframes[objectId][property]) {
+        newKeyframes[objectId][property] = newKeyframes[objectId][property].map(kf =>
+          kf.frame === frame ? { ...kf, value: newValue } : kf
+        );
+      }
+      return newKeyframes;
+    });
+  }, []);
+
+  // ===============================================
+  // PROFESSIONAL TIMELINE - LAYER CONVERSION
+  // ===============================================
+
+  // Convert objects to layers format for Professional Timeline
+  const objectsToLayers = useCallback(() => {
+    const LAYER_COLORS = [
+      '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6',
+      '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
+    ];
+
+    return objects.map((obj, index) => {
+      // Get all keyframes for this object
+      const objKeyframes = keyframes[obj.id] || {};
+      const framesList = [];
+
+      // Collect all unique frame numbers
+      const allFrames = new Set();
+      Object.values(objKeyframes).forEach(propertyKeyframes => {
+        propertyKeyframes.forEach(kf => allFrames.add(kf.frame));
+      });
+
+      // Convert to Professional Timeline format
+      const sortedFrames = Array.from(allFrames).sort((a, b) => a - b);
+      sortedFrames.forEach(frameNum => {
+        framesList.push({
+          frame: frameNum,
+          type: 'keyframe',
+          tween: 'motion' // Default to motion tween
+        });
+      });
+
+      // Add initial keyframe if none exists
+      if (framesList.length === 0) {
+        framesList.push({
+          frame: 0,
+          type: 'keyframe',
+          tween: 'none'
+        });
+      }
+
+      return {
+        id: obj.id,
+        name: obj.name || obj.type || `Layer ${index + 1}`,
+        visible: obj.visible !== false,
+        locked: obj.locked || false,
+        color: LAYER_COLORS[index % LAYER_COLORS.length],
+        frames: framesList
+      };
+    });
+  }, [objects, keyframes]);
+
+  // Layer management handlers
+  const handleLayersChange = useCallback((newLayers) => {
+    // Update objects based on layer changes
+    const updatedObjects = objects.map(obj => {
+      const layer = newLayers.find(l => l.id === obj.id);
+      if (layer) {
+        return {
+          ...obj,
+          name: layer.name,
+          visible: layer.visible,
+          locked: layer.locked
+        };
+      }
+      return obj;
+    });
+    setObjects(updatedObjects);
+  }, [objects]);
+
+  const handleAddLayerPro = useCallback((newLayer) => {
+    // Create a new object for the new layer
+    const newObject = {
+      id: newLayer.id,
+      type: 'rectangle',
+      x: 400 + objects.length * 20,
+      y: 300 + objects.length * 20,
+      width: 100,
+      height: 100,
+      rotation: 0,
+      fill: newLayer.color,
+      stroke: '#000000',
+      strokeWidth: 2,
+      opacity: 1,
+      name: newLayer.name,
+      visible: newLayer.visible,
+      locked: newLayer.locked
+    };
+    setObjects(prev => [...prev, newObject]);
+  }, [objects]);
+
+  const handleDeleteLayerPro = useCallback((layerId) => {
+    setObjects(prev => prev.filter(obj => obj.id !== layerId));
+    setKeyframes(prev => {
+      const newKeyframes = { ...prev };
+      delete newKeyframes[layerId];
+      return newKeyframes;
+    });
+    setSelectedObjectIds(prev => prev.filter(id => id !== layerId));
+  }, []);
+
+  const handleUpdateLayerPro = useCallback((layerId, updates) => {
+    setObjects(prev =>
+      prev.map(obj => obj.id === layerId ? { ...obj, ...updates } : obj)
+    );
+  }, []);
+
+  // Professional Timeline keyframe handlers
+  const handleAddKeyframePro = useCallback((layerId, frame, type) => {
+    const obj = objects.find(o => o.id === layerId);
+    if (!obj) return;
+
+    // Add keyframes for all animatable properties
+    const properties = ['x', 'y', 'width', 'height', 'rotation', 'opacity'];
+    properties.forEach(prop => {
+      addKeyframe(layerId, prop, frame, obj[prop]);
+    });
+  }, [objects, addKeyframe]);
+
+  const handleRemoveKeyframePro = useCallback((layerId, frame) => {
+    // Remove all keyframes at this frame
+    const objKeyframes = keyframes[layerId] || {};
+    Object.keys(objKeyframes).forEach(property => {
+      removeKeyframe(layerId, property, frame);
+    });
+  }, [keyframes, removeKeyframe]);
 
   // ===============================================
   // FILE UPLOAD & IMAGE HANDLING
@@ -614,7 +768,7 @@ const AnimationTool = () => {
         thumbnail
       };
 
-      const response = await fetch('http://localhost:5000/api/canvas/project', {
+      const response = await fetch('http://localhost:3001/api/canvas/project', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -646,7 +800,7 @@ const AnimationTool = () => {
     if (!projectId) return;
 
     try {
-      const response = await fetch(`http://localhost:5000/api/canvas/project/${projectId}`);
+      const response = await fetch(`http://localhost:3001/api/canvas/project/${projectId}`);
       const data = await response.json();
 
       if (response.ok && data.project) {
@@ -706,7 +860,7 @@ const AnimationTool = () => {
         setKeyframes(loadedKeyframes);
 
         // Restore animation settings
-        setTotalFrames(Math.round((project.duration || 10) * (project.fps || 30)));
+        setTotalFrames(Math.round((project.duration || 5) * (project.fps || 30)));
         setFps(project.fps || 30);
         setCurrentFrame(project.currentFrame || 0);
         setLoopEnabled(project.loop !== undefined ? project.loop : true);
@@ -736,9 +890,10 @@ const AnimationTool = () => {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Apply canvas offset
+    // Apply canvas offset and zoom
     ctx.save();
     ctx.translate(canvasOffset.x, canvasOffset.y);
+    ctx.scale(canvasZoom, canvasZoom);
 
     // Draw each object
     objects.forEach(obj => {
@@ -886,7 +1041,25 @@ const AnimationTool = () => {
     }
 
     ctx.restore();
-  }, [objects, selectedObjectIds, getInterpolatedValue, canvasOffset, isPlaying, isDrawing, currentPath, selectedTool, brushColor, brushSize]);
+  }, [objects, selectedObjectIds, getInterpolatedValue, canvasOffset, canvasZoom, isPlaying, isDrawing, currentPath, selectedTool, brushColor, brushSize]);
+
+  // Prevent default browser zoom behavior on canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const preventDefaultZoom = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    };
+
+    canvas.addEventListener('wheel', preventDefaultZoom, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('wheel', preventDefaultZoom);
+    };
+  }, []);
 
   // ===============================================
   // CANVAS INTERACTION
@@ -896,8 +1069,8 @@ const AnimationTool = () => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     return {
-      x: e.clientX - rect.left - canvasOffset.x,
-      y: e.clientY - rect.top - canvasOffset.y
+      x: (e.clientX - rect.left - canvasOffset.x) / canvasZoom,
+      y: (e.clientY - rect.top - canvasOffset.y) / canvasZoom
     };
   };
 
@@ -1194,6 +1367,113 @@ const AnimationTool = () => {
     }
   };
 
+  // Wheel event for zoom (Ctrl/Cmd + scroll or trackpad pinch)
+  const handleCanvasWheel = useCallback((e) => {
+    // Check for Ctrl key (Windows/Linux) or Cmd key (Mac) or trackpad pinch gesture
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+
+      // Get mouse position relative to canvas (before zoom)
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Calculate world position (point in canvas space before zoom)
+      const worldX = (mouseX - canvasOffset.x) / canvasZoom;
+      const worldY = (mouseY - canvasOffset.y) / canvasZoom;
+
+      // Determine zoom direction and apply zoom
+      const delta = -e.deltaY;
+      const zoomSpeed = 0.001;
+      const zoomFactor = 1 + delta * zoomSpeed;
+
+      const newZoom = Math.max(0.1, Math.min(5, canvasZoom * zoomFactor));
+
+      // Calculate new offset to keep world position under mouse
+      const newOffsetX = mouseX - worldX * newZoom;
+      const newOffsetY = mouseY - worldY * newZoom;
+
+      setCanvasZoom(newZoom);
+      setCanvasOffset({ x: newOffsetX, y: newOffsetY });
+    }
+  }, [canvasZoom, canvasOffset]);
+
+  // Touch handlers for pinch-to-zoom
+  const touchDistance = useRef(0);
+  const touchCenter = useRef({ x: 0, y: 0 });
+  const initialTouchZoom = useRef(1);
+
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+
+      const dx = touch2.clientX - touch1.clientX;
+      const dy = touch2.clientY - touch1.clientY;
+      touchDistance.current = Math.sqrt(dx * dx + dy * dy);
+      initialTouchZoom.current = canvasZoom;
+
+      touchCenter.current = {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2
+      };
+    }
+  }, [canvasZoom]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+
+      const dx = touch2.clientX - touch1.clientX;
+      const dy = touch2.clientY - touch1.clientY;
+      const newDistance = Math.sqrt(dx * dx + dy * dy);
+
+      if (touchDistance.current > 0) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const rect = canvas.getBoundingClientRect();
+
+        // Current pinch center
+        const currentCenterX = (touch1.clientX + touch2.clientX) / 2;
+        const currentCenterY = (touch1.clientY + touch2.clientY) / 2;
+
+        // Calculate center relative to canvas
+        const centerX = currentCenterX - rect.left;
+        const centerY = currentCenterY - rect.top;
+
+        // Calculate world position (point in canvas space)
+        const worldX = (centerX - canvasOffset.x) / canvasZoom;
+        const worldY = (centerY - canvasOffset.y) / canvasZoom;
+
+        // Calculate new zoom based on distance change
+        const scale = newDistance / touchDistance.current;
+        const newZoom = Math.max(0.1, Math.min(5, initialTouchZoom.current * scale));
+
+        // Calculate new offset to keep world position under touch center
+        const newOffsetX = centerX - worldX * newZoom;
+        const newOffsetY = centerY - worldY * newZoom;
+
+        setCanvasZoom(newZoom);
+        setCanvasOffset({ x: newOffsetX, y: newOffsetY });
+      }
+    }
+  }, [canvasZoom, canvasOffset]);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (e.touches.length < 2) {
+      touchDistance.current = 0;
+      initialTouchZoom.current = 1;
+    }
+  }, []);
+
   const handleTextInputChange = (e) => {
     setTextInputValue(e.target.value);
   };
@@ -1400,6 +1680,28 @@ const AnimationTool = () => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
         selectedObjectIds.forEach(id => duplicateObject(id));
+      }
+
+      // Zoom shortcuts (Cmd/Ctrl + Plus/Minus)
+      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        setCanvasZoom(prev => Math.min(5, prev * 1.2));
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === '-' || e.key === '_')) {
+        e.preventDefault();
+        setCanvasZoom(prev => Math.max(0.1, prev / 1.2));
+      }
+      // Reset zoom (Cmd/Ctrl + 0)
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        setCanvasZoom(1);
+        setCanvasOffset({ x: 0, y: 0 });
+      }
+      // Fit to screen (Cmd/Ctrl + 1)
+      if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+        e.preventDefault();
+        setCanvasZoom(1);
+        setCanvasOffset({ x: 0, y: 0 });
       }
     };
 
@@ -2177,6 +2479,10 @@ const AnimationTool = () => {
             onMouseUp={handleCanvasMouseUp}
             onMouseLeave={handleCanvasMouseUp}
             onDoubleClick={handleCanvasDoubleClick}
+            onWheel={handleCanvasWheel}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           />
 
           {/* Drag & Drop Overlay */}
@@ -2217,6 +2523,73 @@ const AnimationTool = () => {
               onKeyDown={handleTextInputKeyDown}
             />
           )}
+
+          {/* Zoom Controls */}
+          <div style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'rgba(0, 0, 0, 0.7)',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            color: '#fff',
+            fontSize: '12px',
+            zIndex: 10
+          }}>
+            <button
+              onClick={() => setCanvasZoom(prev => Math.max(0.1, prev / 1.2))}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '16px',
+                padding: '4px 8px'
+              }}
+              title="Zoom Out (Ctrl/Cmd + -)"
+            >
+              −
+            </button>
+            <span style={{ minWidth: '50px', textAlign: 'center' }}>
+              {Math.round(canvasZoom * 100)}%
+            </span>
+            <button
+              onClick={() => setCanvasZoom(prev => Math.min(5, prev * 1.2))}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '16px',
+                padding: '4px 8px'
+              }}
+              title="Zoom In (Ctrl/Cmd + +)"
+            >
+              +
+            </button>
+            <button
+              onClick={() => {
+                setCanvasZoom(1);
+                setCanvasOffset({ x: 0, y: 0 });
+              }}
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '11px',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                marginLeft: '4px'
+              }}
+              title="Reset Zoom (Ctrl/Cmd + 0)"
+            >
+              Reset
+            </button>
+          </div>
         </div>
 
         {/* Properties Panel */}
@@ -2502,216 +2875,32 @@ const AnimationTool = () => {
         />
       </div>
 
-      {/* Timeline */}
-      <div className="timeline">
-        <div className="timeline-header">
-          <div className="playback-controls">
-            <button
-              className="playback-btn"
-              onClick={() => setCurrentFrame(0)}
-              title="Go to Start (Home)"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16">
-                <path d="M2 2 L2 14 M6 2 L14 8 L6 14 Z" fill="currentColor" />
-              </svg>
-            </button>
 
-            <button
-              className="playback-btn"
-              onClick={() => setCurrentFrame(prev => Math.max(0, prev - 1))}
-              title="Previous Frame (←)"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16">
-                <path d="M10 2 L4 8 L10 14" fill="none" stroke="currentColor" strokeWidth="2" />
-              </svg>
-            </button>
-
-            <button
-              className={`playback-btn play-btn ${isPlaying ? 'playing' : ''}`}
-              onClick={() => setIsPlaying(!isPlaying)}
-              title="Play/Pause (Space)"
-            >
-              {isPlaying ? (
-                <svg width="16" height="16" viewBox="0 0 16 16">
-                  <rect x="4" y="2" width="3" height="12" fill="currentColor" />
-                  <rect x="9" y="2" width="3" height="12" fill="currentColor" />
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 16 16">
-                  <path d="M4 2 L4 14 L12 8 Z" fill="currentColor" />
-                </svg>
-              )}
-            </button>
-
-            <button
-              className="playback-btn"
-              onClick={() => setCurrentFrame(prev => Math.min(totalFrames, prev + 1))}
-              title="Next Frame (→)"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16">
-                <path d="M6 2 L12 8 L6 14" fill="none" stroke="currentColor" strokeWidth="2" />
-              </svg>
-            </button>
-
-            <button
-              className="playback-btn"
-              onClick={() => setCurrentFrame(totalFrames)}
-              title="Go to End (End)"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16">
-                <path d="M2 2 L10 8 L2 14 Z M14 2 L14 14" fill="currentColor" />
-              </svg>
-            </button>
-
-            <button
-              className={`playback-btn ${loopEnabled ? 'active' : ''}`}
-              onClick={() => setLoopEnabled(!loopEnabled)}
-              title="Loop"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16">
-                <path d="M4 6 Q2 6 2 8 Q2 10 4 10 L12 10 Q14 10 14 8 Q14 6 12 6 M12 4 L14 6 L12 8 M4 12 L2 10 L4 8" stroke="currentColor" fill="none" strokeWidth="1.5" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="timeline-info">
-            <span className="timeline-time">{formatTime(currentFrame)} / {formatTime(totalFrames)}</span>
-            <span className="timeline-frame">Frame {Math.round(currentFrame)} / {totalFrames}</span>
-            <span className="timeline-fps">{fps} FPS</span>
-          </div>
-
-          <div className="timeline-controls">
-            <label className="auto-key-toggle">
-              <input
-                type="checkbox"
-                checked={autoKeying}
-                onChange={(e) => setAutoKeying(e.target.checked)}
-              />
-              <span className={`auto-key-label ${autoKeying ? 'active' : ''}`}>Auto-Key</span>
-            </label>
-
-            <button
-              className="zoom-btn"
-              onClick={() => setTimelineZoom(prev => Math.max(0.25, prev - 0.25))}
-            >
-              -
-            </button>
-            <span className="zoom-label">{Math.round(timelineZoom * 100)}%</span>
-            <button
-              className="zoom-btn"
-              onClick={() => setTimelineZoom(prev => Math.min(4, prev + 0.25))}
-            >
-              +
-            </button>
-          </div>
-        </div>
-
-        <div className="timeline-content" ref={timelineScrollRef}>
-          <div className="timeline-ruler">
-            {Array.from({ length: Math.ceil(totalFrames / 10) + 1 }, (_, i) => i * 10).map(frame => (
-              <div
-                key={frame}
-                className="timeline-marker"
-                style={{ left: `${frame * timelineZoom}px` }}
-              >
-                <span className="timeline-marker-label">{frame}</span>
-                <div className="timeline-marker-line"></div>
-              </div>
-            ))}
-          </div>
-
-          <div
-            className="timeline-playhead"
-            style={{ left: `${currentFrame * timelineZoom}px` }}
-            onMouseDown={(e) => {
-              const startX = e.clientX;
-              const startFrame = currentFrame;
-
-              const handleMove = (e) => {
-                const dx = e.clientX - startX;
-                const frameChange = dx / timelineZoom;
-                const newFrame = Math.max(0, Math.min(totalFrames, startFrame + frameChange));
-                setCurrentFrame(newFrame);
-              };
-
-              const handleUp = () => {
-                document.removeEventListener('mousemove', handleMove);
-                document.removeEventListener('mouseup', handleUp);
-              };
-
-              document.addEventListener('mousemove', handleMove);
-              document.addEventListener('mouseup', handleUp);
-            }}
-          >
-            <div className="timeline-playhead-line"></div>
-            <div className="timeline-playhead-handle"></div>
-          </div>
-
-          <div className="timeline-tracks">
-            {objects.map(obj => (
-              <div key={obj.id} className="timeline-track">
-                <div className="timeline-track-header">
-                  <span className="timeline-track-name">{obj.name}</span>
-                </div>
-
-                <div className="timeline-track-content">
-                  {/* Position Keyframes */}
-                  {keyframes[obj.id]?.position?.map((kf, idx) => (
-                    <div
-                      key={`pos-${idx}`}
-                      className="timeline-keyframe"
-                      style={{ left: `${kf.frame * timelineZoom}px` }}
-                      onClick={() => setCurrentFrame(kf.frame)}
-                      title={`Position keyframe at frame ${kf.frame}`}
-                    >
-                      ◆
-                    </div>
-                  ))}
-
-                  {/* Scale Keyframes */}
-                  {keyframes[obj.id]?.scale?.map((kf, idx) => (
-                    <div
-                      key={`scale-${idx}`}
-                      className="timeline-keyframe"
-                      style={{ left: `${kf.frame * timelineZoom}px` }}
-                      onClick={() => setCurrentFrame(kf.frame)}
-                      title={`Scale keyframe at frame ${kf.frame}`}
-                    >
-                      ◆
-                    </div>
-                  ))}
-
-                  {/* Rotation Keyframes */}
-                  {keyframes[obj.id]?.rotation?.map((kf, idx) => (
-                    <div
-                      key={`rot-${idx}`}
-                      className="timeline-keyframe"
-                      style={{ left: `${kf.frame * timelineZoom}px` }}
-                      onClick={() => setCurrentFrame(kf.frame)}
-                      title={`Rotation keyframe at frame ${kf.frame}`}
-                    >
-                      ◆
-                    </div>
-                  ))}
-
-                  {/* Opacity Keyframes */}
-                  {keyframes[obj.id]?.opacity?.map((kf, idx) => (
-                    <div
-                      key={`opacity-${idx}`}
-                      className="timeline-keyframe"
-                      style={{ left: `${kf.frame * timelineZoom}px` }}
-                      onClick={() => setCurrentFrame(kf.frame)}
-                      title={`Opacity keyframe at frame ${kf.frame}`}
-                    >
-                      ◆
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* Professional Timeline - Adobe Animate Style */}
+      <ProfessionalTimeline
+        layers={objectsToLayers()}
+        currentFrame={Math.round(currentFrame)}
+        totalFrames={totalFrames}
+        fps={fps}
+        isPlaying={isPlaying}
+        loopEnabled={loopEnabled}
+        onionSkinEnabled={onionSkinEnabled}
+        onionSkinRange={onionSkinRange}
+        timelineZoom={timelineZoom}
+        selectedLayerIds={selectedObjectIds}
+        onFrameChange={setCurrentFrame}
+        onLayersChange={handleLayersChange}
+        onSelectLayers={setSelectedObjectIds}
+        onPlayPause={() => setIsPlaying(!isPlaying)}
+        onFpsChange={setFps}
+        onOnionSkinToggle={() => setOnionSkinEnabled(!onionSkinEnabled)}
+        onTimelineZoomChange={setTimelineZoom}
+        onAddKeyframe={handleAddKeyframePro}
+        onRemoveKeyframe={handleRemoveKeyframePro}
+        onAddLayer={handleAddLayerPro}
+        onDeleteLayer={handleDeleteLayerPro}
+        onUpdateLayer={handleUpdateLayerPro}
+      />
     </div>
   );
 };

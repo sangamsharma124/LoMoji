@@ -27,7 +27,7 @@ const ProjectsDashboard = () => {
 
   const loadProjects = async (email) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/canvas/projects/${email}`);
+      const response = await fetch(`http://localhost:3001/api/canvas/projects/${email}`);
       const data = await response.json();
 
       if (response.ok) {
@@ -57,7 +57,7 @@ const ProjectsDashboard = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:5000/api/canvas/project/${projectId}`, {
+      const response = await fetch(`http://localhost:3001/api/canvas/project/${projectId}`, {
         method: 'DELETE',
       });
 

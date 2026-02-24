@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import { User, createUserActivityModel, UserFileActivity, GmailData, UserSession, UserFile, CanvasProject } from './src/models/index.js';
+import { User, createUserActivityModel, UserFileActivity, GmailData, UserSession, UserFile, CanvasProject, UserActionActivity } from './src/models/index.js';
 
 const app = express();
 app.use(express.json());
@@ -578,10 +578,181 @@ app.delete('/api/canvas/project/:projectId', async (req, res) => {
   }
 });
 
+// ========================================
+// USER ACTIVITY TRACKING ENDPOINTS
+// ========================================
+
+// --- API: Log a user activity ---
+app.post('/api/activities', async (req, res) => {
+  try {
+    const {
+      userId,
+      email,
+      actionType,
+      actionData,
+      projectId,
+      projectName,
+      sessionId,
+      userAgent,
+      browser,
+      device,
+      platform
+    } = req.body;
+
+    if (!userId || !email || !actionType) {
+      return res.status(400).json({ error: 'userId, email, and actionType are required' });
+    }
+
+    if (!userMongoConnected) {
+      return res.status(503).json({ error: 'MongoDB not connected' });
+    }
+
+    const activity = new UserActionActivity({
+      userId,
+      email,
+      actionType,
+      actionData: actionData || {},
+      projectId,
+      projectName,
+      sessionId,
+      userAgent,
+      browser,
+      device,
+      platform,
+      timestamp: new Date()
+    });
+
+    await activity.save();
+    return res.status(201).json({ message: 'Activity logged successfully', activity });
+  } catch (err) {
+    console.error('Error logging activity:', err);
+    return res.status(500).json({ error: 'Error logging activity', details: err.message });
+  }
+});
+
+// --- API: Get user activity timeline ---
+app.get('/api/activities/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+
+    if (!userMongoConnected) {
+      return res.status(503).json({ error: 'MongoDB not connected' });
+    }
+
+    const activities = await UserActionActivity.find({ userId })
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.json({ activities, count: activities.length });
+  } catch (err) {
+    console.error('Error fetching user activities:', err);
+    return res.status(500).json({ error: 'Error fetching activities', details: err.message });
+  }
+});
+
+// --- API: Get activities by email ---
+app.get('/api/activities/email/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+
+    if (!userMongoConnected) {
+      return res.status(503).json({ error: 'MongoDB not connected' });
+    }
+
+    const activities = await UserActionActivity.find({ email })
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.json({ activities, count: activities.length });
+  } catch (err) {
+    console.error('Error fetching user activities:', err);
+    return res.status(500).json({ error: 'Error fetching activities', details: err.message });
+  }
+});
+
+// --- API: Get project activity timeline ---
+app.get('/api/activities/project/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const limit = parseInt(req.query.limit) || 100;
+
+    if (!userMongoConnected) {
+      return res.status(503).json({ error: 'MongoDB not connected' });
+    }
+
+    const activities = await UserActionActivity.find({ projectId })
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.json({ activities, count: activities.length });
+  } catch (err) {
+    console.error('Error fetching project activities:', err);
+    return res.status(500).json({ error: 'Error fetching activities', details: err.message });
+  }
+});
+
+// --- API: Get session activities ---
+app.get('/api/activities/session/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    if (!userMongoConnected) {
+      return res.status(503).json({ error: 'MongoDB not connected' });
+    }
+
+    const activities = await UserActionActivity.find({ sessionId })
+      .sort({ timestamp: 1 })
+      .lean();
+
+    return res.json({ activities, count: activities.length });
+  } catch (err) {
+    console.error('Error fetching session activities:', err);
+    return res.status(500).json({ error: 'Error fetching activities', details: err.message });
+  }
+});
+
+// --- API: Get activity stats ---
+app.get('/api/activities/stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userMongoConnected) {
+      return res.status(503).json({ error: 'MongoDB not connected' });
+    }
+
+    const stats = await UserActionActivity.aggregate([
+      { $match: { userId: mongoose.Types.ObjectId(userId) } },
+      {
+        $group: {
+          _id: '$actionType',
+          count: { $sum: 1 },
+          lastOccurred: { $max: '$timestamp' }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    const totalActions = await UserActionActivity.countDocuments({ userId });
+
+    return res.json({
+      totalActions,
+      actionBreakdown: stats
+    });
+  } catch (err) {
+    console.error('Error fetching activity stats:', err);
+    return res.status(500).json({ error: 'Error fetching stats', details: err.message });
+  }
+});
+
 // --- Protect admin and user data routes with JWT middleware ---
 app.use(['/api/admin', '/api/gmail-data', '/api/admin/users/:id/sessions', '/api/admin/users/:id/activities'], authenticateToken);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 MongoDB Status: ${userMongoConnected ? 'Connected' : 'Not Connected'}`);

@@ -1,0 +1,873 @@
+/* ============================================
+   PROFESSIONAL TIMELINE - ADOBE ANIMATE STYLE
+   ============================================ */
+
+.professional-timeline {
+  width: 100%;
+  background: #1a1a1a;
+  border-top: 1px solid #2d2d2d;
+  display: flex;
+  flex-direction: column;
+  color: #e5e5e5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  user-select: none;
+  position: relative;
+}
+
+/* ============================================
+   TIMELINE HEADER
+   ============================================ */
+
+.timeline-header {
+  height: 48px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3d3d3d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.timeline-controls-left,
+.timeline-controls-center,
+.timeline-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeline-controls-center {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Timeline Buttons */
+.timeline-btn {
+  background: #3d3d3d;
+  border: 1px solid #4d4d4d;
+  border-radius: 4px;
+  color: #e5e5e5;
+  cursor: pointer;
+  padding: 6px 12px;
+  font-size: 14px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 32px;
+}
+
+.timeline-btn:hover {
+  background: #4d4d4d;
+  border-color: #5d5d5d;
+}
+
+.timeline-btn.active {
+  background: #0078d4;
+  border-color: #0078d4;
+  color: #fff;
+}
+
+.play-btn {
+  background: #0078d4;
+  border-color: #0078d4;
+  color: #fff;
+  font-size: 16px;
+}
+
+.play-btn:hover {
+  background: #006abc;
+}
+
+.play-btn.playing {
+  background: #d83b01;
+  border-color: #d83b01;
+}
+
+.play-btn.playing:hover {
+  background: #c03401;
+}
+
+.loop-btn.active {
+  background: #107c10;
+  border-color: #107c10;
+}
+
+.onion-skin-btn.active {
+  background: #8764b8;
+  border-color: #8764b8;
+}
+
+/* Time Display */
+.time-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #252525;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  border: 1px solid #3d3d3d;
+}
+
+.current-frame {
+  color: #0078d4;
+  font-weight: 600;
+  min-width: 30px;
+  text-align: right;
+}
+
+.separator {
+  color: #888;
+}
+
+.total-frames {
+  color: #aaa;
+  min-width: 30px;
+}
+
+.time-code {
+  color: #888;
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid #3d3d3d;
+}
+
+/* FPS Control */
+.fps-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #252525;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #3d3d3d;
+}
+
+.fps-control label {
+  font-size: 12px;
+  color: #aaa;
+  font-weight: 600;
+}
+
+.fps-input {
+  width: 50px;
+  background: #1a1a1a;
+  border: 1px solid #3d3d3d;
+  border-radius: 3px;
+  color: #e5e5e5;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: 'Monaco', monospace;
+  text-align: center;
+}
+
+.fps-input:focus {
+  outline: none;
+  border-color: #0078d4;
+}
+
+/* Zoom Controls */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-btn {
+  width: 32px;
+  height: 32px;
+  background: #3d3d3d;
+  border: 1px solid #4d4d4d;
+  border-radius: 4px;
+  color: #e5e5e5;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.zoom-btn:hover {
+  background: #4d4d4d;
+  border-color: #0078d4;
+}
+
+.zoom-level {
+  min-width: 50px;
+  text-align: center;
+  font-size: 12px;
+  color: #aaa;
+  font-family: 'Monaco', monospace;
+}
+
+/* ============================================
+   TIMELINE CONTENT
+   ============================================ */
+
+.timeline-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  background: #1a1a1a;
+}
+
+/* ============================================
+   LAYERS PANEL (LEFT)
+   ============================================ */
+
+.layers-panel {
+  width: 220px;
+  background: #252525;
+  border-right: 1px solid #3d3d3d;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.layers-header {
+  height: 36px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3d3d3d;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.layers-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+.add-layer-btn,
+.delete-layer-btn {
+  width: 28px;
+  height: 28px;
+  background: #3d3d3d;
+  border: 1px solid #4d4d4d;
+  border-radius: 4px;
+  color: #e5e5e5;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.add-layer-btn:hover {
+  background: #0078d4;
+  border-color: #0078d4;
+}
+
+.delete-layer-btn:hover {
+  background: #d83b01;
+  border-color: #d83b01;
+}
+
+.layers-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.layers-list::-webkit-scrollbar {
+  width: 12px;
+}
+
+.layers-list::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.layers-list::-webkit-scrollbar-thumb {
+  background: #3d3d3d;
+  border-radius: 6px;
+}
+
+.layers-list::-webkit-scrollbar-thumb:hover {
+  background: #4d4d4d;
+}
+
+/* Layer Row */
+.layer-row {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-bottom: 1px solid #2d2d2d;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.layer-row:hover {
+  background: #2d2d2d;
+}
+
+.layer-row.selected {
+  background: #0078d4;
+}
+
+.layer-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.layer-visibility-btn,
+.layer-lock-btn {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.layer-visibility-btn:hover,
+.layer-lock-btn:hover {
+  background: #3d3d3d;
+  border-color: #4d4d4d;
+}
+
+.layer-visibility-btn.hidden,
+.layer-lock-btn.locked {
+  color: #d83b01;
+}
+
+.layer-color-indicator {
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.layer-name {
+  flex: 1;
+  font-size: 13px;
+  color: #e5e5e5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-row.selected .layer-name {
+  color: #fff;
+  font-weight: 600;
+}
+
+.layer-name-input {
+  flex: 1;
+  background: #1a1a1a;
+  border: 1px solid #0078d4;
+  border-radius: 3px;
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 13px;
+  outline: none;
+}
+
+/* ============================================
+   TIMELINE FRAMES PANEL (RIGHT)
+   ============================================ */
+
+.timeline-frames-panel {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  background: #1a1a1a;
+}
+
+.timeline-frames-panel::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.timeline-frames-panel::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.timeline-frames-panel::-webkit-scrollbar-thumb {
+  background: #3d3d3d;
+  border-radius: 6px;
+}
+
+.timeline-frames-panel::-webkit-scrollbar-thumb:hover {
+  background: #4d4d4d;
+}
+
+/* Frame Ruler */
+.frame-ruler {
+  height: 36px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3d3d3d;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  overflow: hidden;
+  min-width: fit-content;
+}
+
+.ruler-marker {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+.ruler-tick {
+  width: 1px;
+  height: 8px;
+  background: #555;
+  margin-top: 4px;
+}
+
+.ruler-label {
+  font-size: 10px;
+  color: #888;
+  margin-top: 2px;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+/* Playhead */
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  pointer-events: none;
+  transform: translateX(-1px);
+}
+
+.playhead-handle {
+  position: absolute;
+  top: 0;
+  left: -10px;
+  width: 20px;
+  height: 36px;
+  background: #d83b01;
+  cursor: grab;
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.playhead-handle:active {
+  cursor: grabbing;
+}
+
+.playhead-arrow {
+  color: #fff;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.playhead-line {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  width: 2px;
+  height: calc(100% - 36px);
+  background: #d83b01;
+  box-shadow: 0 0 8px rgba(216, 59, 1, 0.6);
+  pointer-events: none;
+}
+
+/* Frames Container */
+.frames-container {
+  min-width: fit-content;
+  position: relative;
+}
+
+.layer-frames-row {
+  height: 40px;
+  border-bottom: 1px solid #2d2d2d;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.layer-frames-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Frame Grid */
+.frame-grid {
+  display: flex;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.frame-cell {
+  height: 100%;
+  border-right: 1px solid #2a2a2a;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.frame-cell.marker {
+  border-right-color: #3d3d3d;
+}
+
+.frame-cell.current {
+  background: rgba(216, 59, 1, 0.1);
+}
+
+.frame-cell:hover {
+  background: rgba(0, 120, 212, 0.15);
+}
+
+/* Keyframes Layer */
+.keyframes-layer {
+  position: relative;
+  height: 100%;
+  pointer-events: none;
+}
+
+.keyframes-layer > * {
+  pointer-events: all;
+}
+
+/* Tween Spans */
+.tween-span {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 20px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.tween-span:hover {
+  opacity: 1;
+}
+
+.tween-span.tween-motion {
+  background: linear-gradient(90deg, #8764b8 0%, #9d7dca 100%);
+  border: 1px solid #a088d1;
+}
+
+.tween-span.tween-classic {
+  background: linear-gradient(90deg, #0078d4 0%, #1e8eeb 100%);
+  border: 1px solid #3a9ef5;
+}
+
+.tween-span.tween-shape {
+  background: linear-gradient(90deg, #107c10 0%, #2d8e2d 100%);
+  border: 1px solid #4aa14a;
+}
+
+.tween-label {
+  font-size: 9px;
+  color: #fff;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Keyframes */
+.keyframe {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.15s;
+}
+
+.keyframe:hover {
+  transform: translate(-50%, -50%) scale(1.3);
+  z-index: 15;
+}
+
+.keyframe-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  border: 2px solid currentColor;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.keyframe-dot.solid {
+  background: currentColor;
+}
+
+.keyframe-dot.blank {
+  background: #1a1a1a;
+}
+
+.keyframe.keyframe-keyframe {
+  color: #fff;
+}
+
+.keyframe.keyframe-blank {
+  color: #aaa;
+}
+
+/* ============================================
+   CONTEXT MENU
+   ============================================ */
+
+.timeline-context-menu {
+  position: fixed;
+  background: #2d2d2d;
+  border: 1px solid #3d3d3d;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  padding: 4px;
+  min-width: 200px;
+  z-index: 1000;
+  animation: contextMenuAppear 0.15s ease-out;
+}
+
+@keyframes contextMenuAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.timeline-context-menu button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #e5e5e5;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-context-menu button:hover {
+  background: #0078d4;
+  color: #fff;
+}
+
+.menu-divider {
+  height: 1px;
+  background: #3d3d3d;
+  margin: 4px 0;
+}
+
+/* ============================================
+   TIMELINE RESIZER
+   ============================================ */
+
+.timeline-resizer {
+  height: 6px;
+  background: #2d2d2d;
+  border-top: 1px solid #3d3d3d;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.timeline-resizer:hover {
+  background: #3d3d3d;
+}
+
+.timeline-resizer.resizing {
+  background: #0078d4;
+}
+
+.resizer-line {
+  width: 40px;
+  height: 2px;
+  background: #555;
+  border-radius: 1px;
+}
+
+.timeline-resizer:hover .resizer-line {
+  background: #888;
+}
+
+.timeline-resizer.resizing .resizer-line {
+  background: #fff;
+}
+
+/* ============================================
+   ONION SKIN OVERLAY
+   ============================================ */
+
+.onion-skin-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+.onion-skin-frame.previous {
+  filter: hue-rotate(-30deg);
+  opacity: 0.2;
+}
+
+.onion-skin-frame.next {
+  filter: hue-rotate(30deg);
+  opacity: 0.2;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 1024px) {
+  .layers-panel {
+    width: 180px;
+  }
+
+  .timeline-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px;
+  }
+
+  .timeline-controls-left,
+  .timeline-controls-center,
+  .timeline-controls-right {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .layers-panel {
+    width: 150px;
+  }
+
+  .layer-row {
+    height: 36px;
+  }
+
+  .layer-frames-row {
+    height: 36px;
+  }
+
+  .frame-ruler {
+    height: 32px;
+  }
+
+  .playhead-handle {
+    height: 32px;
+  }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes playheadPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.play-btn.playing ~ .playhead .playhead-line {
+  animation: playheadPulse 1s ease-in-out infinite;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.hidden {
+  display: none !important;
+}
+
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   TOOLTIPS
+   ============================================ */
+
+[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2d2d2d;
+  color: #e5e5e5;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 100;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border: 1px solid #3d3d3d;
+  pointer-events: none;
+}
+
+/* ============================================
+   SELECTION HIGHLIGHTS
+   ============================================ */
+
+.frame-cell.selected {
+  background: rgba(0, 120, 212, 0.3);
+  box-shadow: inset 0 0 0 1px #0078d4;
+}
+
+.keyframe.selected {
+  transform: translate(-50%, -50%) scale(1.4);
+  filter: drop-shadow(0 0 8px rgba(0, 120, 212, 0.8));
+}
+
+.keyframe.selected .keyframe-dot {
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.5),
+              0 2px 8px rgba(0, 0, 0, 0.6);
+}

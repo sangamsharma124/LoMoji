@@ -5,6 +5,7 @@ import UserFileActivity from './UserFileActivity.js';
 import GmailData from './GmailData.js';
 import UserSession from './UserSession.js';
 import CanvasProject from './CanvasProject.js';
+import UserActionActivity from './UserActionActivity.js';
 
 export {
   User,
@@ -14,5 +15,6 @@ export {
   UserFileActivity,
   GmailData,
   UserSession,
-  CanvasProject
+  CanvasProject,
+  UserActionActivity
 };

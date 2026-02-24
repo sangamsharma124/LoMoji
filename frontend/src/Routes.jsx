@@ -14,6 +14,7 @@ import Settings from './pages/Settings';
 import AdminPanel from './pages/Admin';
 import AdminUserDetails from './pages/Admin/UserDetails';
 import ProjectsDashboard from './pages/ProjectsDashboard';
+import TimelineDemo from './pages/AnimationTool/TimelineDemo';
 
 const AppRoutes = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -87,6 +88,10 @@ const AppRoutes = () => {
             <AnimationToolPage />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/timeline-demo"
+        element={<TimelineDemo />}
       />
 
       {/* Admin Routes */}
