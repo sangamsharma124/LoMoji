@@ -753,7 +753,14 @@ app.get('/api/activities/stats/:userId', async (req, res) => {
 app.use(['/api/admin', '/api/gmail-data', '/api/admin/users/:id/sessions', '/api/admin/users/:id/activities'], authenticateToken);
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 MongoDB Status: ${userMongoConnected ? 'Connected' : 'Not Connected'}`);
+  console.log(`✅ User MongoDB: ${userMongoConnected ? 'Connected' : 'Waiting...'}`);
+  console.log(`✅ Activity MongoDB: ${activityMongoConnected ? 'Connected' : 'Waiting...'}`);
+});
+
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
+  process.exit(1);
 });

@@ -41,10 +41,13 @@ const ProfessionalTimeline = ({
   onDeleteLayer,
   onUpdateLayer
 }) => {
-  // Load saved timeline height from localStorage, default to 400px
+  // Display all layers (scrollable to show 2 at a time)
+  const displayedLayers = layers;
+  // Load saved timeline height from localStorage, default to 170px with minimum of 170px
   const [timelineHeight, setTimelineHeight] = useState(() => {
     const saved = localStorage.getItem('lomoji_timeline_height');
-    return saved ? parseInt(saved, 10) : 400;
+    const height = saved ? parseInt(saved, 10) : 170;
+    return Math.max(170, height); // Minimum 170px height to show 2 compact layers + controls
   });
   const [isResizing, setIsResizing] = useState(false);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
@@ -53,15 +56,32 @@ const ProfessionalTimeline = ({
   const [selectedFrames, setSelectedFrames] = useState([]);
   const [contextMenu, setContextMenu] = useState(null);
   const [draggedLayer, setDraggedLayer] = useState(null);
+  const [dragOverLayer, setDragOverLayer] = useState(null);
 
   const timelineRef = useRef(null);
   const scrollRef = useRef(null);
   const resizerRef = useRef(null);
+  const layersListRef = useRef(null);
+  const framesWrapperRef = useRef(null);
 
-  // Save timeline height to localStorage whenever it changes
+  // Save timeline height to localStorage whenever it changes (minimum 170px)
   useEffect(() => {
-    localStorage.setItem('lomoji_timeline_height', timelineHeight.toString());
+    const heightToSave = Math.max(170, timelineHeight);
+    localStorage.setItem('lomoji_timeline_height', heightToSave.toString());
   }, [timelineHeight]);
+
+  // Synchronize scrolling between layers list and frames wrapper
+  const handleLayersScroll = useCallback((e) => {
+    if (framesWrapperRef.current && layersListRef.current) {
+      framesWrapperRef.current.scrollTop = e.target.scrollTop;
+    }
+  }, []);
+
+  const handleFramesScroll = useCallback((e) => {
+    if (layersListRef.current && framesWrapperRef.current) {
+      layersListRef.current.scrollTop = e.target.scrollTop;
+    }
+  }, []);
 
   // Frame width in pixels (affected by zoom)
   const frameWidth = 12 * timelineZoom;
@@ -146,7 +166,7 @@ const ProfessionalTimeline = ({
     if (!isResizing) return;
 
     const handleMouseMove = (e) => {
-      const newHeight = Math.max(300, Math.min(800, timelineHeight - e.movementY));
+      const newHeight = Math.max(170, Math.min(800, timelineHeight - e.movementY));
       setTimelineHeight(newHeight);
     };
 
@@ -168,10 +188,10 @@ const ProfessionalTimeline = ({
     if (onAddLayer) {
       onAddLayer({
         id: `layer_${Date.now()}`,
-        name: `Layer ${layers.length + 1}`,
+        name: `Layer ${displayedLayers.length + 1}`,
         visible: true,
         locked: false,
-        color: LAYER_COLORS[layers.length % LAYER_COLORS.length],
+        color: LAYER_COLORS[displayedLayers.length % LAYER_COLORS.length],
         frames: [{ frame: 0, type: KEYFRAME_TYPES.KEYFRAME, tween: TWEEN_TYPES.NONE }]
       });
     }
@@ -182,14 +202,14 @@ const ProfessionalTimeline = ({
   };
 
   const handleToggleLayerVisibility = (layerId) => {
-    const layer = layers.find(l => l.id === layerId);
+    const layer = displayedLayers.find(l => l.id === layerId);
     if (layer && onUpdateLayer) {
       onUpdateLayer(layerId, { visible: !layer.visible });
     }
   };
 
   const handleToggleLayerLock = (layerId) => {
-    const layer = layers.find(l => l.id === layerId);
+    const layer = displayedLayers.find(l => l.id === layerId);
     if (layer && onUpdateLayer) {
       onUpdateLayer(layerId, { locked: !layer.locked });
     }
@@ -202,9 +222,58 @@ const ProfessionalTimeline = ({
     setEditingLayerId(null);
   };
 
+  // Layer reordering handlers
+  const handleLayerDragStart = (e, layer) => {
+    setDraggedLayer(layer);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.currentTarget);
+  };
+
+  const handleLayerDragOver = (e, layer) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedLayer && draggedLayer.id !== layer.id) {
+      setDragOverLayer(layer);
+    }
+  };
+
+  const handleLayerDragLeave = (e) => {
+    setDragOverLayer(null);
+  };
+
+  const handleLayerDrop = (e, targetLayer) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!draggedLayer || draggedLayer.id === targetLayer.id) {
+      setDraggedLayer(null);
+      setDragOverLayer(null);
+      return;
+    }
+
+    // Reorder layers
+    const draggedIndex = displayedLayers.findIndex(l => l.id === draggedLayer.id);
+    const targetIndex = displayedLayers.findIndex(l => l.id === targetLayer.id);
+
+    if (draggedIndex !== -1 && targetIndex !== -1 && onLayersChange) {
+      const newLayers = [...displayedLayers];
+      const [removed] = newLayers.splice(draggedIndex, 1);
+      newLayers.splice(targetIndex, 0, removed);
+      onLayersChange(newLayers);
+    }
+
+    setDraggedLayer(null);
+    setDragOverLayer(null);
+  };
+
+  const handleLayerDragEnd = () => {
+    setDraggedLayer(null);
+    setDragOverLayer(null);
+  };
+
   // Frame operations
   const handleFrameClick = (layerId, frameNum, e) => {
-    const layer = layers.find(l => l.id === layerId);
+    const layer = displayedLayers.find(l => l.id === layerId);
     if (!layer || layer.locked) return;
 
     if (e.shiftKey) {
@@ -249,7 +318,7 @@ const ProfessionalTimeline = ({
   };
 
   const handleCreateMotionTween = (layerId, frameNum) => {
-    const layer = layers.find(l => l.id === layerId);
+    const layer = displayedLayers.find(l => l.id === layerId);
     const frameData = getKeyframeAtFrame(layer, frameNum);
     if (frameData && onUpdateLayer) {
       onUpdateLayer(layerId, {
@@ -262,7 +331,7 @@ const ProfessionalTimeline = ({
   };
 
   const handleCreateClassicTween = (layerId, frameNum) => {
-    const layer = layers.find(l => l.id === layerId);
+    const layer = displayedLayers.find(l => l.id === layerId);
     const frameData = getKeyframeAtFrame(layer, frameNum);
     if (frameData && onUpdateLayer) {
       onUpdateLayer(layerId, {
@@ -413,22 +482,22 @@ const ProfessionalTimeline = ({
         <div className="layers-panel">
           {/* Layer Controls Header */}
           <div className="layers-header">
-            <button className="add-layer-btn" onClick={handleAddLayer} title="New Layer">
-              +
-            </button>
             <span className="layers-title">LAYERS</span>
-            <button className="delete-layer-btn" onClick={() => selectedLayerIds[0] && handleDeleteLayer(selectedLayerIds[0])} title="Delete Layer">
-              🗑
-            </button>
           </div>
 
           {/* Layers List */}
-          <div className="layers-list">
-            {layers.map((layer, index) => (
+          <div className="layers-list" ref={layersListRef} onScroll={handleLayersScroll}>
+            {displayedLayers.map((layer, index) => (
               <div
                 key={layer.id}
-                className={`layer-row ${selectedLayerIds.includes(layer.id) ? 'selected' : ''}`}
+                className={`layer-row ${selectedLayerIds.includes(layer.id) ? 'selected' : ''} ${draggedLayer?.id === layer.id ? 'dragging' : ''} ${dragOverLayer?.id === layer.id ? 'drag-over' : ''}`}
                 onClick={() => onSelectLayers && onSelectLayers([layer.id])}
+                draggable={true}
+                onDragStart={(e) => handleLayerDragStart(e, layer)}
+                onDragOver={(e) => handleLayerDragOver(e, layer)}
+                onDragLeave={handleLayerDragLeave}
+                onDrop={(e) => handleLayerDrop(e, layer)}
+                onDragEnd={handleLayerDragEnd}
               >
                 <div className="layer-controls">
                   <button
@@ -516,8 +585,9 @@ const ProfessionalTimeline = ({
           </div>
 
           {/* Layer Frames */}
-          <div className="frames-container" ref={timelineRef}>
-            {layers.map(layer => (
+          <div className="frames-container-wrapper" ref={framesWrapperRef} onScroll={handleFramesScroll}>
+            <div className="frames-container" ref={timelineRef}>
+              {displayedLayers.map(layer => (
               <div key={layer.id} className="layer-frames-row">
                 {/* Background grid */}
                 <div className="frame-grid">
@@ -578,6 +648,7 @@ const ProfessionalTimeline = ({
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </div>
       </div>

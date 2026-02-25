@@ -7,6 +7,7 @@ import TextAssetsPanel from './TextAssetsPanel';
 import AnimationPresetsDialog from './AnimationPresetsDialog';
 import AnimationAssetsPanel from './AnimationAssetsPanel';
 import ProfessionalTimeline from './ProfessionalTimeline';
+import ObjectsPanel from './ObjectsPanel';
 import './ProfessionalTimeline.css';
 
 // Easing functions for smooth animations
@@ -51,7 +52,7 @@ const AnimationTool = () => {
 
   // UI State
   const [selectedTool, setSelectedTool] = useState('select');
-  const [showLayersPanel, setShowLayersPanel] = useState(true);
+  const [showLayersPanel, setShowLayersPanel] = useState(false);
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(true);
   const [showAssetsPanel, setShowAssetsPanel] = useState(false);
   const [expandedLayers, setExpandedLayers] = useState({});
@@ -2349,7 +2350,7 @@ const AnimationTool = () => {
         </div>
 
         <div className="toolbar-right">
-          {/* File Upload Button */}
+          {/* Hidden File Input - Used by sidebar upload button */}
           <input
             ref={fileInputRef}
             type="file"
@@ -2358,14 +2359,6 @@ const AnimationTool = () => {
             style={{ display: 'none' }}
             onChange={handleFileInputChange}
           />
-          <button
-            className="btn-secondary"
-            onClick={() => fileInputRef.current?.click()}
-            title="Upload Image/SVG"
-            style={{ marginRight: '10px' }}
-          >
-            📁 Upload
-          </button>
 
           <button
             className="btn-primary"
@@ -2390,13 +2383,24 @@ const AnimationTool = () => {
       <div className="content">
         {/* Vertical Icon Sidebar */}
         <div className="icon-sidebar">
+          {/* Objects Panel Button */}
           <button
-            className={`icon-sidebar-btn ${leftPanelView === 'layers' ? 'active' : ''}`}
-            onClick={() => setLeftPanelView('layers')}
-            data-tooltip="Layers"
+            className={`icon-sidebar-btn ${leftPanelView === 'objects' ? 'active' : ''}`}
+            onClick={() => setLeftPanelView('objects')}
+            data-tooltip="Objects"
+            style={{
+              background: leftPanelView === 'objects' ? '#6366f1' : 'transparent'
+            }}
           >
-            📁
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="4" y="4" width="6" height="6" rx="1"/>
+              <rect x="4" y="14" width="6" height="6" rx="1"/>
+              <rect x="14" y="4" width="6" height="6" rx="1"/>
+              <rect x="14" y="14" width="6" height="6" rx="1"/>
+            </svg>
           </button>
+
+          <div className="icon-sidebar-divider"></div>
 
           {/* Unified Presets Button (Shapes, Icons, Emojis, Arrows, Symbols, Logos) */}
           <button
@@ -2431,6 +2435,21 @@ const AnimationTool = () => {
             data-tooltip="Animations"
           >
             🎬
+          </button>
+
+          <div className="icon-sidebar-divider"></div>
+
+          {/* Upload Button */}
+          <button
+            className="icon-sidebar-btn upload-btn"
+            onClick={() => fileInputRef.current?.click()}
+            data-tooltip="Upload Image"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
           </button>
         </div>
 
@@ -2568,13 +2587,21 @@ const AnimationTool = () => {
               )}
             </div>
 
-            <button
-              className="add-layer-btn"
-              onClick={() => addObject('rectangle')}
-            >
-              + Add Layer
-            </button>
           </div>
+        )}
+
+        {/* Objects Panel */}
+        {leftPanelView === 'objects' && (
+          <ObjectsPanel
+            objects={objects}
+            selectedObjectIds={selectedObjectIds}
+            onSelectObject={setSelectedObjectIds}
+            onUpdateObject={updateObject}
+            onDeleteObject={deleteObject}
+            onDuplicateObject={duplicateObject}
+            onReorderObjects={setObjects}
+            currentFrame={currentFrame}
+          />
         )}
 
         {/* Unified Presets Panel */}
