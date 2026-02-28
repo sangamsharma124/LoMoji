@@ -1,0 +1,163 @@
+﻿
+Routes.jsx:2:import { Routes 
+as RouterRoutes, Route, 
+Navigate } from 
+'react-router-dom';
+Routes.jsx:36:        
+element={isAuthenticated ? 
+<Navigate to="/dashboard" 
+replace /> : <LoginPage />}
+Routes.jsx:40:        
+element={isAuthenticated ? 
+<Navigate to="/dashboard" 
+replace /> : <SignUp />}
+Routes.jsx:102:      <Route 
+path="*" element={<Navigate 
+to="/" replace />} />
+components\common\Header.jsx:
+3:import { useNavigate } 
+from 'react-router-dom';
+components\common\Header.jsx:
+14:  const navigate = 
+useNavigate();
+components\common\Header.jsx:
+96:    navigate('/');
+components\common\Header.jsx:
+268:              
+onClick={() => 
+navigate('/login')}
+components\common\Header.jsx:
+276:              
+onClick={() => 
+navigate('/signup')}
+components\common\Header.jsx:
+343:                        
+navigate('/profile');
+components\common\Header.jsx:
+352:                        
+navigate('/settings');
+components\common\Header.jsx:
+563:              
+onClick={() => 
+navigate('/dashboard')}
+components\common\Header.jsx:
+585:                      
+navigate('/profile');
+components\common\Header.jsx:
+594:                      
+navigate('/settings');
+components\common\ProtectedRo
+ute.jsx:2:import { Navigate 
+} from 'react-router-dom';
+components\common\ProtectedRo
+ute.jsx:17:    return 
+<Navigate to="/login" 
+replace />;
+contexts\AuthContext.jsx:2:im
+port { useNavigate } from 
+'react-router-dom';
+contexts\AuthContext.jsx:19: 
+ const navigate = 
+useNavigate();
+contexts\AuthContext.jsx:60: 
+       
+navigate('/dashboard');
+contexts\AuthContext.jsx:86: 
+   navigate('/login');
+pages\Admin\index.jsx:2:impor
+t { useNavigate } from 
+'react-router-dom';
+pages\Admin\index.jsx:37:  
+const navigate = 
+useNavigate();
+pages\Admin\index.jsx:119:   
+                   
+onClick={() => navigate(`/adm
+in/${user._id}/details`)}
+pages\Admin\index.jsx:128:   
+                         navi
+gate(`/admin/${user._id}/deta
+ils`);
+pages\Admin\UserDetails.jsx:2
+:import { useNavigate, 
+useParams } from 
+'react-router-dom';
+pages\Admin\UserDetails.jsx:2
+1:  const navigate = 
+useNavigate();
+pages\Admin\UserDetails.jsx:9
+3:          onClick={() => 
+navigate('/admin')}
+pages\Admin\UserDetails.jsx:1
+14:        onClick={() => 
+navigate('/admin')}
+pages\Login\index.jsx:2:impor
+t { Link, useNavigate } from 
+'react-router-dom';
+pages\Login\index.jsx:13:  
+const navigate = 
+useNavigate();
+pages\Login\SignUp.jsx:2:impo
+rt { Link, useNavigate } 
+from 'react-router-dom';
+pages\Login\SignUp.jsx:16:  
+const navigate = 
+useNavigate();
+pages\Login\SignUp.jsx:73:   
+       navigate('/login');
+pages\ProjectsDashboard\index
+.jsx:2:import { useNavigate 
+} from 'react-router-dom';
+pages\ProjectsDashboard\index
+.jsx:6:  const navigate = 
+useNavigate();
+pages\ProjectsDashboard\index
+.jsx:47:    navigate(`/animat
+ion-tool/${projectId}`);
+pages\ProjectsDashboard\index
+.jsx:51:    navigate(`/animat
+ion-tool/${projectId}`);
+pages\ProjectsDashboard\index
+.jsx:95:          <button 
+className="btn-primary" 
+onClick={() => 
+navigate('/login')}>
+pages\user_work_book\index.js
+x:2:import { useNavigate, 
+Link, useLocation } from 
+'react-router-dom';
+pages\user_work_book\index.js
+x:9:  const navigate = 
+useNavigate();
+pages\user_work_book\index.js
+x:85:      navigate(`/animati
+on-tool/${file._id}`, { 
+state: { file } });
+pages\user_work_book\index.js
+x:87:      
+navigate('/animation-tool', 
+{ state: { file } });
+pages\user_work_book\index.js
+x:181:              navigate(
+`/animation-tool/${responseDa
+ta.file._id}`);
+pages\user_work_book\index.js
+x:188:                  navig
+ate(`/animation-tool/${newFil
+e._id}`);
+pages\user_work_book\index.js
+x:190:                  
+navigate('/animation-tool');
+pages\user_work_book\index.js
+x:193:                
+navigate('/animation-tool');
+pages\user_work_book\index.js
+x:256:    navigate('/');
+pages\user_work_book\index.js
+x:929:                  
+navigate('/profile');
+pages\user_work_book\index.js
+x:938:                  
+navigate('/settings');
+
+

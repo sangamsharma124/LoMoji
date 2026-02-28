@@ -166,32 +166,33 @@ const UserWorkBook = () => {
                 date: `Created ${new Date(f.createdAt).toLocaleDateString()}`,
               })),
             );
-          } else {
-            const err = await filesRes.json();
-            console.error('err: Failed to fetch files after create:', err);
-          }
-          setShowNewFileModal(false);
-          setSelectedFileType('');
-          setNewFileName('');
 
-          // Redirect to AnimationTool page for icon animation, logo emoji, and GIF video files with MongoDB ID
-          if (['icon', 'emoji', 'giff'].includes(fileType)) {
-            // If we have the file ID from response, use it; otherwise fetch files to get the ID
-            if (responseData.file && responseData.file._id) {
-              navigate(`/animation-tool/${responseData.file._id}`);
-            } else {
-              // Find the newly created file
-              if (filesRes.ok) {
-                const data = await filesRes.json();
+            setShowNewFileModal(false);
+            setSelectedFileType('');
+            setNewFileName('');
+
+            // Redirect to AnimationTool page for icon animation, logo emoji, and GIF video files with MongoDB ID
+            if (['icon', 'emoji', 'giff'].includes(fileType)) {
+              // Priority 1: Use ID from direct POST response
+              if (responseData.file && responseData.file._id) {
+                navigate(`/animation-tool/${responseData.file._id}`);
+              } else {
+                // Priority 2: Find it in the newly fetched list
                 const newFile = data.files.find(f => f.fileName === fileName);
                 if (newFile && newFile._id) {
                   navigate(`/animation-tool/${newFile._id}`);
                 } else {
                   navigate('/animation-tool');
                 }
-              } else {
-                navigate('/animation-tool');
               }
+            }
+          } else {
+            console.error('err: Failed to fetch files after create');
+            setShowNewFileModal(false);
+            setSelectedFileType('');
+            setNewFileName('');
+            if (['icon', 'emoji', 'giff'].includes(fileType)) {
+              navigate('/animation-tool');
             }
           }
         } else {
@@ -870,11 +871,10 @@ const UserWorkBook = () => {
                   <div
                     key={type.id}
                     onClick={() => setSelectedFileType(type.id)}
-                    className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                      selectedFileType === type.id
+                    className={`p-3 border rounded-lg cursor-pointer transition-all ${selectedFileType === type.id
                         ? 'border-purple-500 bg-purple-50'
                         : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center space-x-3">
                       <span className="text-2xl">{type.icon}</span>
@@ -899,11 +899,10 @@ const UserWorkBook = () => {
               <button
                 onClick={handleCreateFile}
                 disabled={!selectedFileType || !newFileName.trim()}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  selectedFileType && newFileName.trim()
+                className={`px-4 py-2 rounded-lg transition-colors ${selectedFileType && newFileName.trim()
                     ? 'bg-purple-600 text-white hover:bg-purple-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
+                  }`}
               >
                 Create File
               </button>

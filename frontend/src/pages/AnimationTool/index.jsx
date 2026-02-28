@@ -9,6 +9,13 @@ import AnimationAssetsPanel from './AnimationAssetsPanel';
 import ProfessionalTimeline from './ProfessionalTimeline';
 import ObjectsPanel from './ObjectsPanel';
 import './ProfessionalTimeline.css';
+import gifshot from 'gifshot';
+import JSZip from 'jszip';
+import { getActivityTracker } from '../../middleware/clientActivityTracker';
+
+// Initialize tracker for dashboard logging
+const tracker = getActivityTracker('http://localhost:3001/api');
+
 
 // Easing functions for smooth animations
 const easingFunctions = {
@@ -52,13 +59,13 @@ const AnimationTool = () => {
 
   // UI State
   const [selectedTool, setSelectedTool] = useState('select');
-  const [showLayersPanel, setShowLayersPanel] = useState(false);
+  const [showLayersPanel, setShowLayersPanel] = useState(true);
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(true);
   const [showAssetsPanel, setShowAssetsPanel] = useState(false);
   const [expandedLayers, setExpandedLayers] = useState({});
   const [assetSearchQuery, setAssetSearchQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('all');
-  const [leftPanelView, setLeftPanelView] = useState('layers'); // 'layers', 'assets', 'text', or 'animation'
+  const [leftPanelView, setLeftPanelView] = useState('objects'); // 'objects', 'layers', 'assets', 'text', or 'animation'
   const [showToolPopup, setShowToolPopup] = useState(false);
   const toolPopupRef = useRef(null);
   const [animationSearchQuery, setAnimationSearchQuery] = useState('');
@@ -69,7 +76,6 @@ const AnimationTool = () => {
   const [fileName, setFileName] = useState('Untitled Animation');
   const [isSaving, setIsSaving] = useState(false);
 
-  // History State
   const [history, setHistory] = useState([]);
   const [historyStep, setHistoryStep] = useState(-1);
 
@@ -77,6 +83,13 @@ const AnimationTool = () => {
   const [interactionMode, setInteractionMode] = useState('idle');
   const [dragStart, setDragStart] = useState(null);
   const [transformStart, setTransformStart] = useState(null);
+
+  // Image Cache to avoid decoding on every frame
+  const imageCache = useRef({});
+
+  // Flag to know if project was just loaded (prevents draft overwrite)
+  const [hasLoadedProject, setHasLoadedProject] = useState(false);
+
 
   // Text Editing State
   const [editingTextId, setEditingTextId] = useState(null);
@@ -110,12 +123,22 @@ const AnimationTool = () => {
   const [showBackgroundRemoval, setShowBackgroundRemoval] = useState(false);
   const [processingBgRemoval, setProcessingBgRemoval] = useState(false);
 
-  // Border Preset State
+  const [borderRadius, setBorderRadius] = useState(0);
   const [showBorderPresets, setShowBorderPresets] = useState(false);
   const [borderStyle, setBorderStyle] = useState('solid');
   const [borderWidth, setBorderWidth] = useState(2);
   const [borderColor, setBorderColor] = useState('#000000');
-  const [borderRadius, setBorderRadius] = useState(0);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportOptions, setExportOptions] = useState({
+    fileType: 'video',
+    fileExtension: 'mp4',
+    watermark: 'Include a watermark'
+  });
+  const [shareEmails, setShareEmails] = useState('');
+  const [previewImage, setPreviewImage] = useState(null);
+  const [exportProgress, setExportProgress] = useState(0); // 0 to 100
+  const [isExporting, setIsExporting] = useState(false);
 
   // ===============================================
   // KEYFRAME INTERPOLATION ENGINE
@@ -673,7 +696,7 @@ const AnimationTool = () => {
   // SAVE / LOAD PROJECT FUNCTIONS
   // ===============================================
 
-  // Get user info from localStorage
+  // Get user info from localStorage and track activity
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
@@ -681,28 +704,97 @@ const AnimationTool = () => {
         const user = JSON.parse(storedUser);
         setUserEmail(user.email);
         setUserId(user.id);
+
+        // Track the page view/activity immediately
+        tracker.trackPageView('Animation Editor');
+        if (dashboardId) {
+          tracker.trackProjectOpen(dashboardId);
+        } else {
+          tracker.track('DASHBOARD_ENTRY', { description: 'User opened blank animation page' });
+        }
       } catch (e) {
         console.error('Error parsing user from localStorage:', e);
       }
     }
-  }, []);
+  }, [dashboardId]);
+
+  // High-frequency LocalStorage sync for refresh protection
+  // This saves to local storage instantly on any change, even before DB save
+  useEffect(() => {
+    if (!hasLoadedProject && dashboardId) return; // Wait for initial load
+
+    const draftId = dashboardId || 'new_project';
+    const draftData = {
+      objects,
+      keyframes,
+      totalFrames,
+      fps,
+      fileName,
+      timestamp: Date.now()
+    };
+
+    localStorage.setItem(`lomoji_draft_${draftId}`, JSON.stringify(draftData));
+  }, [objects, keyframes, totalFrames, fps, fileName, dashboardId, hasLoadedProject]);
 
   // Auto-save project instantly after changes (with 2 second debounce)
+  // Also ensures NEW projects (blank pages) are registered in the DB
   useEffect(() => {
-    if (!userEmail || !userId || !dashboardId) return;
+    if (!userEmail || !userId) return;
 
-    // Debounce: Save after 2 seconds of no changes
+    // Log the "Project View" activity for brand new pages too
+    if (!dashboardId) {
+      const initialSaveTimeout = setTimeout(() => {
+        saveProject(); // Force an initial save to create the entry in dashboard DB
+      }, 3000); // Wait 3 seconds of being on a blank page to register it
+      return () => clearTimeout(initialSaveTimeout);
+    }
+
+    // Debounce: Save to DB after 2 seconds of no changes
     const autoSaveTimeout = setTimeout(() => {
       saveProject();
-    }, 2000); // Save 2 seconds after last change
+    }, 2000);
 
     return () => clearTimeout(autoSaveTimeout);
   }, [userEmail, userId, dashboardId, objects, keyframes, currentFrame, totalFrames, fps, loopEnabled, autoKeying, fileName]);
 
-  // Load project on mount if dashboardId exists
+  // Load project on mount if dashboardId exists, checking for localStorage drafts first
   useEffect(() => {
     if (dashboardId && userEmail && userId) {
+      // Check if there's a more recent local draft (e.g., from a recent refresh)
+      const localDraft = localStorage.getItem(`lomoji_draft_${dashboardId}`);
+      if (localDraft) {
+        try {
+          const parsed = JSON.parse(localDraft);
+          // If draft is newer than ~2 seconds old, it might be a refresh recovery
+          const isRecentlyModified = (Date.now() - parsed.timestamp) < 60000; // within 1 min
+          if (isRecentlyModified) {
+            console.log("🚀 Recovered unsaved changes from a recent page refresh");
+            setObjects(parsed.objects || []);
+            setKeyframes(parsed.keyframes || {});
+            setTotalFrames(parsed.totalFrames || 150);
+            setFps(parsed.fps || 30);
+            setFileName(parsed.fileName || 'Untitled Animation');
+            setHasLoadedProject(true);
+            return; // Use local draft instead of server load to preserve refresh state
+          }
+        } catch (e) { console.error("Draft recovery failed", e); }
+      }
+
       loadProject(dashboardId);
+    } else if (!dashboardId) {
+      // For new projects, check if we were working on a "new" draft before refresh
+      const newDraft = localStorage.getItem('lomoji_draft_new_project');
+      if (newDraft) {
+        try {
+          const parsed = JSON.parse(newDraft);
+          if ((Date.now() - parsed.timestamp) < 300000) { // Keep new drafts for 5 mins
+            setObjects(parsed.objects);
+            setKeyframes(parsed.keyframes);
+            setFileName(parsed.fileName);
+          }
+        } catch (e) { }
+      }
+      setHasLoadedProject(true);
     }
   }, [dashboardId, userEmail, userId]);
 
@@ -781,9 +873,16 @@ const AnimationTool = () => {
 
       if (response.ok) {
         console.log('✅ Project saved successfully:', data.message);
+
+        // Track the save activity in dashboard
+        tracker.trackProjectSave(dashboardId || data.project?.projectId, {
+          objectCount: objects.length,
+          fileName
+        });
+
         // Update URL if this is a new project
         if (!dashboardId && data.project) {
-          window.history.pushState({}, '', `/animation-tool/${data.project.projectId}`);
+          window.history.pushState({}, '', `/editor/${data.project.projectId}`);
         }
       } else {
         console.error('❌ Error saving project:', data.error);
@@ -797,163 +896,271 @@ const AnimationTool = () => {
     }
   };
 
+  const handleSendInvites = () => {
+    if (!shareEmails) return;
+    alert(`Invites sent to: ${shareEmails}`);
+    setShareEmails('');
+    setShowShareModal(false);
+  };
+
   const exportProject = () => {
     const canvas = canvasRef.current;
-    if (!canvas) {
-      alert('No canvas to export');
-      return;
+    if (canvas) {
+      setPreviewImage(canvas.toDataURL('image/png'));
     }
-
-    // Show export options dialog
-    const exportFormat = prompt(
-      'Choose export format:\n' +
-      '1. JSON (Project Data)\n' +
-      '2. PNG (Current Frame)\n' +
-      '3. Animated Frames (ZIP)\n' +
-      '\nEnter 1, 2, or 3:'
-    );
-
-    switch (exportFormat) {
-      case '1':
-        exportAsJSON();
-        break;
-      case '2':
-        exportAsPNG();
-        break;
-      case '3':
-        exportAsFrames();
-        break;
-      default:
-        alert('Invalid selection');
-    }
+    setShowExportModal(true);
   };
 
-  const exportAsJSON = () => {
+  const exportAsSVG = () => {
     const canvas = canvasRef.current;
+    let svg = `<svg viewBox="0 0 ${canvas?.width || 800} ${canvas?.height || 600}" xmlns="http://www.w3.org/2000/svg">`;
 
-    const elements = objects.map(obj => ({
-      id: obj.id,
-      type: obj.type,
-      x: obj.x,
-      y: obj.y,
-      width: obj.width,
-      height: obj.height,
-      rotation: obj.rotation,
-      opacity: obj.opacity,
-      fill: obj.fill,
-      stroke: obj.stroke,
-      strokeWidth: obj.strokeWidth,
-      text: obj.text,
-      fontSize: obj.fontSize,
-      fontFamily: obj.fontFamily,
-      emoji: obj.emoji,
-      visible: obj.visible,
-      locked: obj.locked,
-      name: obj.name,
-      keyframes: keyframes[obj.id] ? Object.keys(keyframes[obj.id]).map(property =>
-        keyframes[obj.id][property].map(kf => ({
-          frame: kf.frame,
-          property: property,
-          value: kf.value
-        }))
-      ).flat() : []
-    }));
+    // Add background if any
+    svg += `<rect width="100%" height="100%" fill="white" />`;
 
-    const exportData = {
-      projectName: fileName,
-      canvasWidth: canvas?.width || 800,
-      canvasHeight: canvas?.height || 600,
-      backgroundColor: '#ffffff',
-      elements,
-      duration: totalFrames / fps,
-      fps,
-      totalFrames,
-      loop: loopEnabled,
-      exportedAt: new Date().toISOString()
-    };
+    objects.forEach(obj => {
+      if (!obj.visible) return;
 
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
+      const centerX = obj.x + obj.width / 2;
+      const centerY = obj.y + obj.height / 2;
+      const transform = `rotate(${obj.rotation} ${centerX} ${centerY})`;
+
+      if (obj.type === 'rectangle') {
+        svg += `<rect x="${obj.x}" y="${obj.y}" width="${obj.width}" height="${obj.height}" fill="${obj.fill}" opacity="${obj.opacity}" stroke="${obj.stroke}" stroke-width="${obj.strokeWidth}" transform="${transform}" />`;
+      } else if (obj.type === 'circle') {
+        const radius = Math.min(obj.width, obj.height) / 2;
+        svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="${obj.fill}" opacity="${obj.opacity}" stroke="${obj.stroke}" stroke-width="${obj.strokeWidth}" transform="${transform}" />`;
+      } else if (obj.type === 'text') {
+        svg += `<text x="${obj.x}" y="${obj.y + 20}" font-family="${obj.fontFamily || 'Arial'}" font-size="${obj.fontSize || 20}" fill="${obj.fill}" opacity="${obj.opacity}" transform="${transform}">${obj.text || ''}</text>`;
+      } else if (obj.type === 'emoji') {
+        svg += `<text x="${obj.x}" y="${obj.y + 40}" font-size="${obj.width}" transform="${transform}">${obj.emoji || ''}</text>`;
+      }
+    });
+
+    if (exportOptions.watermark === 'Include a watermark') {
+      svg += `<text x="10" y="${(canvas?.height || 600) - 10}" font-size="12" fill="rgba(0,0,0,0.3)">Made with LoMoji</text>`;
+    }
+
+    svg += `</svg>`;
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${fileName || 'animation'}.json`;
-    link.style.display = 'none';
-    document.body.appendChild(link);
+    link.download = `${fileName || 'animation'}.svg`;
     link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 100);
-
-    console.log('✅ Exported as JSON');
-    alert('JSON file downloaded successfully!');
+    URL.revokeObjectURL(url);
   };
 
-  const exportAsPNG = () => {
+  const exportAsEmoji = () => {
     const canvas = canvasRef.current;
-    if (!canvas) {
-      alert('Canvas not found');
-      return;
-    }
+    if (!canvas) return;
 
-    const dataURL = canvas.toDataURL('image/png');
+    // Create a temporary 128x128 canvas for emoji
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 128;
+    tempCanvas.height = 128;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Draw current canvas scaled
+    tempCtx.drawImage(canvas, 0, 0, 128, 128);
+
+    const dataURL = tempCanvas.toDataURL('image/png');
     const link = document.createElement('a');
     link.href = dataURL;
-    link.download = `${fileName || 'animation'}_frame_${currentFrame}.png`;
-    link.style.display = 'none';
-    document.body.appendChild(link);
+    link.download = `${fileName || 'emoji'}.png`;
     link.click();
-    document.body.removeChild(link);
+  };
 
+  const exportAsLoMoji = () => {
+    const exportData = {
+      version: "1.0.0",
+      metadata: {
+        name: fileName,
+        author: userEmail || "Anonymous",
+        createdAt: new Date().toISOString(),
+        application: "LoMoji Studio Pro"
+      },
+      canvas: {
+        width: canvasRef.current?.width || 800,
+        height: canvasRef.current?.height || 600,
+        fps,
+        totalFrames,
+        loop: loopEnabled
+      },
+      objects: objects.map(obj => ({
+        ...obj,
+        keyframes: keyframes[obj.id] || {}
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${(fileName || 'animation').replace(/\s+/g, '_')}.lomoji.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    alert("Project exported in professional LoMoji format!");
+  };
+
+  const exportAsPNG = async () => {
+    const mainCanvas = canvasRef.current;
+    if (!mainCanvas) return;
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = mainCanvas.width;
+    exportCanvas.height = mainCanvas.height;
+
+    renderFrame(currentFrame, exportCanvas, true);
+
+    const dataURL = exportCanvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = dataURL;
+    link.download = `${fileName || 'animation'}.png`;
+    link.click();
     console.log('✅ Exported current frame as PNG');
     alert('PNG file downloaded successfully!');
   };
 
-  const exportAsFrames = async () => {
-    if (objects.length === 0) {
-      alert('No objects to export');
-      return;
+  const exportAsFramesZip = async () => {
+    const zip = new JSZip();
+    const mainCanvas = canvasRef.current;
+    if (!mainCanvas) return;
+
+    setIsExporting(true);
+    setExportProgress(0);
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = mainCanvas.width;
+    exportCanvas.height = mainCanvas.height;
+
+    for (let i = 0; i < totalFrames; i++) {
+      renderFrame(i, exportCanvas, true);
+      const dataURL = exportCanvas.toDataURL('image/png').split(',')[1];
+      zip.file(`frame_${String(i).padStart(4, '0')}.png`, dataURL, { base64: true });
+      setExportProgress(Math.round((i / totalFrames) * 100));
+      await new Promise(r => setTimeout(r, 10));
     }
 
-    const originalFrame = currentFrame;
+    const content = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(content);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fileName || 'animation'}_frames.zip`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    setIsExporting(false);
+    setExportProgress(0);
+    alert("Professional Frames ZIP Export Complete!");
+  };
+
+  const exportAsGIF = async () => {
+    const mainCanvas = canvasRef.current;
+    if (!mainCanvas) return;
+
+    setIsExporting(true);
+    setExportProgress(0);
+
     const frames = [];
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = mainCanvas.width;
+    exportCanvas.height = mainCanvas.height;
 
-    // Render all frames
-    for (let frame = 0; frame < totalFrames; frame++) {
-      // Temporarily set frame
-      if (onFrameChange) onFrameChange(frame);
+    // Capture frames for GIF using universal renderer
+    for (let i = 0; i < totalFrames; i++) {
+      renderFrame(i, exportCanvas, true);
+      frames.push(exportCanvas.toDataURL('image/png'));
+      setExportProgress(Math.round((i / totalFrames) * 50)); // First half for capture
+      await new Promise(r => setTimeout(r, 5));
+    }
 
-      // Wait for render
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Capture frame
-      const canvas = canvasRef.current;
-      if (canvas) {
-        frames.push({
-          frame,
-          dataURL: canvas.toDataURL('image/png')
-        });
+    gifshot.createGIF({
+      images: frames,
+      interval: 1 / fps,
+      gifWidth: mainCanvas.width,
+      gifHeight: mainCanvas.height,
+      progressCallback: (captureProgress) => {
+        setExportProgress(50 + Math.round(captureProgress * 50));
       }
-    }
+    }, (obj) => {
+      if (!obj.error) {
+        const link = document.createElement('a');
+        link.href = obj.image;
+        link.download = `${fileName || 'animation'}.gif`;
+        link.click();
+      } else {
+        alert("GIF creation failed: " + obj.errorMsg);
+      }
+      setIsExporting(false);
+      setExportProgress(0);
+    });
+  };
 
-    // Restore original frame
-    if (onFrameChange) onFrameChange(originalFrame);
+  const exportAsVideoPro = async () => {
+    const mainCanvas = canvasRef.current;
+    if (!mainCanvas) return;
 
-    // Download frames as separate images with delay to prevent browser blocking
-    for (let i = 0; i < frames.length; i++) {
-      const { frame, dataURL } = frames[i];
-      await new Promise(resolve => setTimeout(resolve, 100)); // Delay between downloads
+    const extension = 'mp4';
+    const supportedMime = MediaRecorder.isTypeSupported('video/mp4;codecs=h264')
+      ? 'video/mp4;codecs=h264'
+      : (MediaRecorder.isTypeSupported('video/mp4')
+        ? 'video/mp4'
+        : 'video/webm;codecs=vp9');
 
+    setIsExporting(true);
+    setExportProgress(0);
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = mainCanvas.width;
+    exportCanvas.height = mainCanvas.height;
+
+    // High quality context
+    const ctx = exportCanvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // Capture stream
+    const stream = exportCanvas.captureStream(0);
+    const recorder = new MediaRecorder(stream, {
+      mimeType: supportedMime,
+      videoBitsPerSecond: 15000000 // High quality 15Mbps
+    });
+
+    const chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: supportedMime });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = dataURL;
-      link.download = `${fileName || 'animation'}_frame_${String(frame).padStart(4, '0')}.png`;
-      link.style.display = 'none';
-      document.body.appendChild(link);
+      link.href = url;
+      link.download = `${fileName || 'animation'}.${extension}`;
       link.click();
-      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setIsExporting(false);
+      setExportProgress(0);
+      alert(`Professional MP4 Export Complete!`);
+    };
+
+    recorder.start();
+    await new Promise(r => setTimeout(r, 200));
+
+    // Restore the smooth capture loop the user preferred
+    for (let i = 0; i < totalFrames; i++) {
+      renderFrame(i, exportCanvas, true);
+
+      if (stream.getVideoTracks()[0].requestFrame) {
+        stream.getVideoTracks()[0].requestFrame();
+      }
+
+      setExportProgress(Math.round((i / totalFrames) * 100));
+      // Consistent interval works best for MediaRecorder encoding
+      await new Promise(r => setTimeout(r, 1000 / fps));
     }
 
-    console.log(`✅ Exported ${frames.length} frames`);
-    alert(`Exported ${frames.length} frames. Check your downloads folder.`);
+    await new Promise(r => setTimeout(r, 500));
+    recorder.stop();
   };
 
   const loadProject = async (projectId) => {
@@ -1025,13 +1232,15 @@ const AnimationTool = () => {
         setCurrentFrame(project.currentFrame || 0);
         setLoopEnabled(project.loop !== undefined ? project.loop : true);
         setAutoKeying(project.autoKey !== undefined ? project.autoKey : false);
-
+        setHasLoadedProject(true);
         console.log('✅ Project loaded successfully:', project.projectName);
       } else {
         console.error('❌ Error loading project:', data.error);
+        setHasLoadedProject(true); // Still mark as loaded to allow auto-saves
       }
     } catch (error) {
       console.error('❌ Error loading project:', error);
+      setHasLoadedProject(true);
     }
   };
 
@@ -1039,21 +1248,26 @@ const AnimationTool = () => {
   // RENDERING ENGINE
   // ===============================================
 
-  const renderFrame = useCallback((frame) => {
-    const canvas = canvasRef.current;
+  const renderFrame = useCallback((frame, customCanvas = null, isExport = false) => {
+    const canvas = customCanvas || canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Draw background (Transparent for SVG/PNG, white for video/gif)
+    const bgType = (isExport && (exportOptions.fileType === 'svg' || exportOptions.fileType === 'png')) ? 'transparent' : 'white';
+    if (bgType === 'white') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
-    // Apply canvas offset and zoom
+    // Apply canvas offset and zoom (only for editor, NOT for export)
     ctx.save();
-    ctx.translate(canvasOffset.x, canvasOffset.y);
-    ctx.scale(canvasZoom, canvasZoom);
+    if (!isExport) {
+      ctx.translate(canvasOffset.x, canvasOffset.y);
+      ctx.scale(canvasZoom, canvasZoom);
+    }
 
     // Draw each object
     objects.forEach(obj => {
@@ -1122,40 +1336,43 @@ const AnimationTool = () => {
           ctx.stroke();
         }
       } else if (obj.type === 'image') {
-        // Draw uploaded image
+        // Draw uploaded image with high-performance caching
         if (obj.imageSrc) {
-          const img = new Image();
-          img.src = obj.imageSrc;
+          let img = imageCache.current[obj.imageSrc];
+          if (!img) {
+            img = new Image();
+            img.src = obj.imageSrc;
+            // Only set onload once to avoid stacking listeners every frame
+            img.onload = () => renderFrame(frame, customCanvas, isExport);
+            imageCache.current[obj.imageSrc] = img;
+          }
+
           if (img.complete) {
             ctx.drawImage(img, -scale.width / 2, -scale.height / 2, scale.width, scale.height);
-          } else {
-            img.onload = () => {
-              renderFrame(frame);
-            };
           }
         }
       } else if (obj.type === 'svg') {
-        // Draw SVG content
+        // Draw SVG content with high-performance caching
         if (obj.svgContent) {
-          const svgBlob = new Blob([obj.svgContent], { type: 'image/svg+xml;charset=utf-8' });
-          const url = URL.createObjectURL(svgBlob);
-          const img = new Image();
-          img.src = url;
+          let img = imageCache.current[obj.svgContent];
+          if (!img) {
+            const svgBlob = new Blob([obj.svgContent], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+            img = new Image();
+            img.src = url;
+            // Only set onload once to avoid stacking listeners every frame
+            img.onload = () => renderFrame(frame, customCanvas, isExport);
+            imageCache.current[obj.svgContent] = img;
+          }
+
           if (img.complete) {
             ctx.drawImage(img, -scale.width / 2, -scale.height / 2, scale.width, scale.height);
-            URL.revokeObjectURL(url);
-          } else {
-            img.onload = () => {
-              ctx.drawImage(img, -scale.width / 2, -scale.height / 2, scale.width, scale.height);
-              URL.revokeObjectURL(url);
-              renderFrame(frame);
-            };
           }
         }
       }
 
-      // Draw selection handles if selected
-      if (selectedObjectIds.includes(obj.id) && !isPlaying) {
+      // Draw selection handles if selected (NEVER in export)
+      if (selectedObjectIds.includes(obj.id) && !isPlaying && !isExport) {
         ctx.strokeStyle = '#6366f1';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
@@ -1200,8 +1417,20 @@ const AnimationTool = () => {
       ctx.globalAlpha = 1;
     }
 
+    // Watermark (Export only)
+    if (isExport && exportOptions.watermark === 'Include a watermark') {
+      const logoText = "Made with LoMoji";
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset for watermark
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.font = 'bold 16px Arial';
+      const textWidth = ctx.measureText(logoText).width;
+      ctx.fillText(logoText, canvas.width - textWidth - 30, canvas.height - 30);
+      ctx.restore();
+    }
+
     ctx.restore();
-  }, [objects, selectedObjectIds, getInterpolatedValue, canvasOffset, canvasZoom, isPlaying, isDrawing, currentPath, selectedTool, brushColor, brushSize]);
+  }, [objects, selectedObjectIds, getInterpolatedValue, canvasOffset, canvasZoom, isPlaying, isDrawing, currentPath, selectedTool, brushColor, brushSize, exportOptions]);
 
   // Prevent default browser zoom behavior on canvas
   useEffect(() => {
@@ -1247,7 +1476,7 @@ const AnimationTool = () => {
       const halfHeight = scale.height / 2;
 
       if (x >= position.x - halfWidth && x <= position.x + halfWidth &&
-          y >= position.y - halfHeight && y <= position.y + halfHeight) {
+        y >= position.y - halfHeight && y <= position.y + halfHeight) {
         return obj;
       }
     }
@@ -1282,10 +1511,10 @@ const AnimationTool = () => {
         setTransformStart(
           selectedObjectIds.includes(clickedObj.id)
             ? objects.filter(obj => selectedObjectIds.includes(obj.id)).map(obj => ({
-                id: obj.id,
-                x: obj.x,
-                y: obj.y
-              }))
+              id: obj.id,
+              x: obj.x,
+              y: obj.y
+            }))
             : [{ id: clickedObj.id, x: clickedObj.x, y: clickedObj.y }]
         );
       } else {
@@ -1312,23 +1541,23 @@ const AnimationTool = () => {
         setTransformStart(
           selectedObjectIds.includes(clickedObj.id)
             ? objects.filter(obj => selectedObjectIds.includes(obj.id)).map(obj => ({
-                id: obj.id,
-                x: obj.x,
-                y: obj.y,
-                width: obj.width,
-                height: obj.height,
-                fontSize: obj.fontSize,
-                strokeWidth: obj.strokeWidth
-              }))
+              id: obj.id,
+              x: obj.x,
+              y: obj.y,
+              width: obj.width,
+              height: obj.height,
+              fontSize: obj.fontSize,
+              strokeWidth: obj.strokeWidth
+            }))
             : [{
-                id: clickedObj.id,
-                x: clickedObj.x,
-                y: clickedObj.y,
-                width: clickedObj.width,
-                height: clickedObj.height,
-                fontSize: clickedObj.fontSize,
-                strokeWidth: clickedObj.strokeWidth
-              }]
+              id: clickedObj.id,
+              x: clickedObj.x,
+              y: clickedObj.y,
+              width: clickedObj.width,
+              height: clickedObj.height,
+              fontSize: clickedObj.fontSize,
+              strokeWidth: clickedObj.strokeWidth
+            }]
         );
       } else {
         setSelectedObjectIds([]);
@@ -1939,9 +2168,9 @@ const AnimationTool = () => {
               onClick={() => setShowToolPopup(!showToolPopup)}
               title={
                 selectedTool === 'select' ? 'Select Tool (V)' :
-                selectedTool === 'scale' ? 'Scale Tool (K)' :
-                selectedTool === 'draw' ? 'Draw Artboard (F)' :
-                'Select Tool (V)'
+                  selectedTool === 'scale' ? 'Scale Tool (K)' :
+                    selectedTool === 'draw' ? 'Draw Artboard (F)' :
+                      'Select Tool (V)'
               }
             >
               {selectedTool === 'select' && (
@@ -2116,8 +2345,8 @@ const AnimationTool = () => {
               title="Remove Background (Select an image)"
             >
               <svg width="20" height="20" viewBox="0 0 20 20">
-                <rect x="2" y="2" width="16" height="16" stroke="currentColor" strokeWidth="1.5" fill="none" strokeDasharray="2,2"/>
-                <circle cx="10" cy="10" r="4" fill="currentColor"/>
+                <rect x="2" y="2" width="16" height="16" stroke="currentColor" strokeWidth="1.5" fill="none" strokeDasharray="2,2" />
+                <circle cx="10" cy="10" r="4" fill="currentColor" />
               </svg>
             </button>
 
@@ -2177,7 +2406,7 @@ const AnimationTool = () => {
                     style={{ width: '100%', padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                   >
                     <svg width="16" height="16" viewBox="0 0 20 20">
-                      <rect x="3" y="3" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="2,2"/>
+                      <rect x="3" y="3" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="2,2" />
                     </svg>
                     Border Presets
                   </button>
@@ -2361,18 +2590,16 @@ const AnimationTool = () => {
           />
 
           <button
-            className="btn-primary"
-            onClick={saveProject}
-            disabled={isSaving || !userEmail}
-            title={!userEmail ? 'Please login to save' : 'Save project (Ctrl+S)'}
-            style={{ marginRight: '10px', opacity: isSaving ? 0.6 : 1 }}
+            className="btn-secondary"
+            onClick={() => setShowShareModal(true)}
+            style={{ marginRight: '10px' }}
           >
-            {isSaving ? 'Saving...' : 'Save'}
+            Share
           </button>
           <button
             className="btn-primary"
             onClick={exportProject}
-            title="Export animation (JSON, PNG, or Frames)"
+            title="Export animation"
           >
             Export
           </button>
@@ -2386,17 +2613,32 @@ const AnimationTool = () => {
           {/* Objects Panel Button */}
           <button
             className={`icon-sidebar-btn ${leftPanelView === 'objects' ? 'active' : ''}`}
-            onClick={() => setLeftPanelView('objects')}
+            onClick={() => setLeftPanelView(leftPanelView === 'objects' ? '' : 'objects')}
             data-tooltip="Objects"
             style={{
               background: leftPanelView === 'objects' ? '#6366f1' : 'transparent'
             }}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="4" y="4" width="6" height="6" rx="1"/>
-              <rect x="4" y="14" width="6" height="6" rx="1"/>
-              <rect x="14" y="4" width="6" height="6" rx="1"/>
-              <rect x="14" y="14" width="6" height="6" rx="1"/>
+              <rect x="4" y="4" width="6" height="6" rx="1" />
+              <rect x="4" y="14" width="6" height="6" rx="1" />
+              <rect x="14" y="4" width="6" height="6" rx="1" />
+              <rect x="14" y="14" width="6" height="6" rx="1" />
+            </svg>
+          </button>
+
+          {/* Layers Panel Button */}
+          <button
+            className={`icon-sidebar-btn ${leftPanelView === 'layers' ? 'active' : ''}`}
+            onClick={() => setLeftPanelView(leftPanelView === 'layers' ? '' : 'layers')}
+            data-tooltip="Layers"
+            style={{
+              background: leftPanelView === 'layers' ? '#6366f1' : 'transparent'
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2 L22 8.5 L12 15 L2 8.5 Z" />
+              <path d="M2 12 L12 18.5 L22 12" />
             </svg>
           </button>
 
@@ -2412,10 +2654,10 @@ const AnimationTool = () => {
             }}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="14" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
             </svg>
           </button>
 
@@ -2446,15 +2688,15 @@ const AnimationTool = () => {
             data-tooltip="Upload Image"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
           </button>
         </div>
 
         {/* Conditional Panel: Layers, Assets, or Text */}
-        {leftPanelView === 'layers' && showLayersPanel && (
+        {leftPanelView === 'layers' && (
           <div className="layers-panel panel">
             <div className="panel-header">
               <h3>Layers</h3>
@@ -2833,167 +3075,167 @@ const AnimationTool = () => {
                     />
                   </div>
 
-              <div className="property-group">
-                <label>Position</label>
-                <div className="property-row">
-                  <div className="property-input-group">
-                    <span className="property-label">X</span>
-                    <input
-                      type="number"
-                      value={Math.round(selectedObject.x)}
-                      onChange={(e) => updateObject(selectedObject.id, { x: parseFloat(e.target.value) })}
-                    />
+                  <div className="property-group">
+                    <label>Position</label>
+                    <div className="property-row">
+                      <div className="property-input-group">
+                        <span className="property-label">X</span>
+                        <input
+                          type="number"
+                          value={Math.round(selectedObject.x)}
+                          onChange={(e) => updateObject(selectedObject.id, { x: parseFloat(e.target.value) })}
+                        />
+                        <button
+                          className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'position', Math.round(currentFrame)) ? 'active' : ''}`}
+                          onClick={() => {
+                            if (hasKeyframeAt(selectedObject.id, 'position', Math.round(currentFrame))) {
+                              removeKeyframe(selectedObject.id, 'position', Math.round(currentFrame));
+                            } else {
+                              addKeyframe(selectedObject.id, 'position', Math.round(currentFrame), { x: selectedObject.x, y: selectedObject.y });
+                            }
+                          }}
+                        >
+                          ◆
+                        </button>
+                      </div>
+                      <div className="property-input-group">
+                        <span className="property-label">Y</span>
+                        <input
+                          type="number"
+                          value={Math.round(selectedObject.y)}
+                          onChange={(e) => updateObject(selectedObject.id, { y: parseFloat(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="property-group">
+                    <label>Size</label>
+                    <div className="property-row">
+                      <div className="property-input-group">
+                        <span className="property-label">W</span>
+                        <input
+                          type="number"
+                          value={Math.round(selectedObject.width)}
+                          onChange={(e) => updateObject(selectedObject.id, { width: parseFloat(e.target.value) })}
+                        />
+                        <button
+                          className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'scale', Math.round(currentFrame)) ? 'active' : ''}`}
+                          onClick={() => {
+                            if (hasKeyframeAt(selectedObject.id, 'scale', Math.round(currentFrame))) {
+                              removeKeyframe(selectedObject.id, 'scale', Math.round(currentFrame));
+                            } else {
+                              addKeyframe(selectedObject.id, 'scale', Math.round(currentFrame), { width: selectedObject.width, height: selectedObject.height });
+                            }
+                          }}
+                        >
+                          ◆
+                        </button>
+                      </div>
+                      <div className="property-input-group">
+                        <span className="property-label">H</span>
+                        <input
+                          type="number"
+                          value={Math.round(selectedObject.height)}
+                          onChange={(e) => updateObject(selectedObject.id, { height: parseFloat(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="property-group">
+                    <label>Rotation</label>
+                    <div className="property-input-group">
+                      <input
+                        type="number"
+                        value={Math.round(selectedObject.rotation)}
+                        onChange={(e) => updateObject(selectedObject.id, { rotation: parseFloat(e.target.value) })}
+                      />
+                      <span className="property-unit">°</span>
+                      <button
+                        className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'rotation', Math.round(currentFrame)) ? 'active' : ''}`}
+                        onClick={() => {
+                          if (hasKeyframeAt(selectedObject.id, 'rotation', Math.round(currentFrame))) {
+                            removeKeyframe(selectedObject.id, 'rotation', Math.round(currentFrame));
+                          } else {
+                            addKeyframe(selectedObject.id, 'rotation', Math.round(currentFrame), selectedObject.rotation);
+                          }
+                        }}
+                      >
+                        ◆
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="property-group">
+                    <label>Opacity</label>
+                    <div className="property-input-group">
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={selectedObject.opacity}
+                        onChange={(e) => updateObject(selectedObject.id, { opacity: parseFloat(e.target.value) })}
+                      />
+                      <span className="property-value">{Math.round(selectedObject.opacity * 100)}%</span>
+                      <button
+                        className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'opacity', Math.round(currentFrame)) ? 'active' : ''}`}
+                        onClick={() => {
+                          if (hasKeyframeAt(selectedObject.id, 'opacity', Math.round(currentFrame))) {
+                            removeKeyframe(selectedObject.id, 'opacity', Math.round(currentFrame));
+                          } else {
+                            addKeyframe(selectedObject.id, 'opacity', Math.round(currentFrame), selectedObject.opacity);
+                          }
+                        }}
+                      >
+                        ◆
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedObject.type !== 'emoji' && selectedObject.type !== 'text' && (
+                    <>
+                      <div className="property-group">
+                        <label>Fill Color</label>
+                        <input
+                          type="color"
+                          value={selectedObject.fill}
+                          onChange={(e) => updateObject(selectedObject.id, { fill: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="property-group">
+                        <label>Stroke Color</label>
+                        <input
+                          type="color"
+                          value={selectedObject.stroke}
+                          onChange={(e) => updateObject(selectedObject.id, { stroke: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="property-group">
+                        <label>Stroke Width</label>
+                        <input
+                          type="number"
+                          value={selectedObject.strokeWidth}
+                          onChange={(e) => updateObject(selectedObject.id, { strokeWidth: parseFloat(e.target.value) })}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div className="property-group">
                     <button
-                      className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'position', Math.round(currentFrame)) ? 'active' : ''}`}
+                      className="btn-danger"
                       onClick={() => {
-                        if (hasKeyframeAt(selectedObject.id, 'position', Math.round(currentFrame))) {
-                          removeKeyframe(selectedObject.id, 'position', Math.round(currentFrame));
-                        } else {
-                          addKeyframe(selectedObject.id, 'position', Math.round(currentFrame), { x: selectedObject.x, y: selectedObject.y });
-                        }
+                        deleteObject(selectedObject.id);
+                        saveHistory(objects);
                       }}
                     >
-                      ◆
+                      Delete Object
                     </button>
                   </div>
-                  <div className="property-input-group">
-                    <span className="property-label">Y</span>
-                    <input
-                      type="number"
-                      value={Math.round(selectedObject.y)}
-                      onChange={(e) => updateObject(selectedObject.id, { y: parseFloat(e.target.value) })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="property-group">
-                <label>Size</label>
-                <div className="property-row">
-                  <div className="property-input-group">
-                    <span className="property-label">W</span>
-                    <input
-                      type="number"
-                      value={Math.round(selectedObject.width)}
-                      onChange={(e) => updateObject(selectedObject.id, { width: parseFloat(e.target.value) })}
-                    />
-                    <button
-                      className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'scale', Math.round(currentFrame)) ? 'active' : ''}`}
-                      onClick={() => {
-                        if (hasKeyframeAt(selectedObject.id, 'scale', Math.round(currentFrame))) {
-                          removeKeyframe(selectedObject.id, 'scale', Math.round(currentFrame));
-                        } else {
-                          addKeyframe(selectedObject.id, 'scale', Math.round(currentFrame), { width: selectedObject.width, height: selectedObject.height });
-                        }
-                      }}
-                    >
-                      ◆
-                    </button>
-                  </div>
-                  <div className="property-input-group">
-                    <span className="property-label">H</span>
-                    <input
-                      type="number"
-                      value={Math.round(selectedObject.height)}
-                      onChange={(e) => updateObject(selectedObject.id, { height: parseFloat(e.target.value) })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="property-group">
-                <label>Rotation</label>
-                <div className="property-input-group">
-                  <input
-                    type="number"
-                    value={Math.round(selectedObject.rotation)}
-                    onChange={(e) => updateObject(selectedObject.id, { rotation: parseFloat(e.target.value) })}
-                  />
-                  <span className="property-unit">°</span>
-                  <button
-                    className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'rotation', Math.round(currentFrame)) ? 'active' : ''}`}
-                    onClick={() => {
-                      if (hasKeyframeAt(selectedObject.id, 'rotation', Math.round(currentFrame))) {
-                        removeKeyframe(selectedObject.id, 'rotation', Math.round(currentFrame));
-                      } else {
-                        addKeyframe(selectedObject.id, 'rotation', Math.round(currentFrame), selectedObject.rotation);
-                      }
-                    }}
-                  >
-                    ◆
-                  </button>
-                </div>
-              </div>
-
-              <div className="property-group">
-                <label>Opacity</label>
-                <div className="property-input-group">
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={selectedObject.opacity}
-                    onChange={(e) => updateObject(selectedObject.id, { opacity: parseFloat(e.target.value) })}
-                  />
-                  <span className="property-value">{Math.round(selectedObject.opacity * 100)}%</span>
-                  <button
-                    className={`keyframe-btn-inline ${hasKeyframeAt(selectedObject.id, 'opacity', Math.round(currentFrame)) ? 'active' : ''}`}
-                    onClick={() => {
-                      if (hasKeyframeAt(selectedObject.id, 'opacity', Math.round(currentFrame))) {
-                        removeKeyframe(selectedObject.id, 'opacity', Math.round(currentFrame));
-                      } else {
-                        addKeyframe(selectedObject.id, 'opacity', Math.round(currentFrame), selectedObject.opacity);
-                      }
-                    }}
-                  >
-                    ◆
-                  </button>
-                </div>
-              </div>
-
-              {selectedObject.type !== 'emoji' && selectedObject.type !== 'text' && (
-                <>
-                  <div className="property-group">
-                    <label>Fill Color</label>
-                    <input
-                      type="color"
-                      value={selectedObject.fill}
-                      onChange={(e) => updateObject(selectedObject.id, { fill: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="property-group">
-                    <label>Stroke Color</label>
-                    <input
-                      type="color"
-                      value={selectedObject.stroke}
-                      onChange={(e) => updateObject(selectedObject.id, { stroke: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="property-group">
-                    <label>Stroke Width</label>
-                    <input
-                      type="number"
-                      value={selectedObject.strokeWidth}
-                      onChange={(e) => updateObject(selectedObject.id, { strokeWidth: parseFloat(e.target.value) })}
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="property-group">
-                <button
-                  className="btn-danger"
-                  onClick={() => {
-                    deleteObject(selectedObject.id);
-                    saveHistory(objects);
-                  }}
-                >
-                  Delete Object
-                </button>
-              </div>
                 </>
               )}
 
@@ -3065,6 +3307,156 @@ const AnimationTool = () => {
           selectedObject={selectedObject}
           currentFrame={Math.round(currentFrame)}
         />
+
+        {/* Share Modal */}
+        {showShareModal && (
+          <div className="modal-overlay">
+            <div className="modal-container share-modal">
+              <div className="modal-header">
+                <h3>Share and Invite</h3>
+                <button className="modal-close" onClick={() => setShowShareModal(false)}>×</button>
+              </div>
+              <div className="modal-content">
+                <div className="share-section">
+                  <label>Share via link</label>
+                  <div className="link-copy-group">
+                    <input readOnly value={`${window.location.origin}/editor/${dashboardId || 'new'}`} />
+                    <button onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/editor/${dashboardId || 'new'}`);
+                      alert('Link copied!');
+                    }}>Copy</button>
+                  </div>
+                </div>
+                <div className="share-section">
+                  <label>Who can view?</label>
+                  <select>
+                    <option>Private (Only people in this team can view)</option>
+                    <option>Public (Anyone can view)</option>
+                  </select>
+                </div>
+                <div className="share-section">
+                  <textarea
+                    placeholder="Team member emails"
+                    value={shareEmails}
+                    onChange={(e) => setShareEmails(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn-primary full-width" onClick={handleSendInvites}>Send invites</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Export Modal */}
+        {showExportModal && (
+          <div className="modal-overlay">
+            <div className="modal-container export-modal">
+              <div className="modal-header">
+                <h3>Export</h3>
+                <button className="modal-close" onClick={() => setShowExportModal(false)}>×</button>
+              </div>
+              <div className="modal-content export-grid">
+                <div className="export-preview">
+                  <div className="preview-canvas-placeholder">
+                    {previewImage ? (
+                      <img src={previewImage} alt="Export preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    ) : (
+                      <div className="placeholder-text">Rendering preview...</div>
+                    )}
+                    {exportOptions.watermark === 'Include a watermark' && (
+                      <div className="placeholder-watermark">Made with LoMoji</div>
+                    )}
+                  </div>
+                </div>
+                <div className="export-controls">
+                  <div className="control-group">
+                    <label>File type</label>
+                    <select
+                      value={exportOptions.fileType}
+                      onChange={(e) => setExportOptions({ ...exportOptions, fileType: e.target.value })}
+                    >
+                      <option value="video">Video</option>
+                      <option value="gif">GIF</option>
+                      <option value="png">PNG</option>
+                      <option value="svg">SVG</option>
+                    </select>
+                  </div>
+                  <div className="control-group">
+                    <label>File name</label>
+                    <input
+                      type="text"
+                      className="export-name-input"
+                      value={fileName}
+                      onChange={(e) => setFileName(e.target.value)}
+                      placeholder="e.g. My Animation"
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: '1px solid #ddd',
+                        borderRadius: '6px',
+                        background: '#fff',
+                        fontSize: '14px'
+                      }}
+                    />
+                  </div>
+                  <div className="control-group">
+                    <label>Size</label>
+                    <div className="info-text">47.7 KB</div>
+                  </div>
+                  <div className="control-group">
+                    <label>Watermark</label>
+                    <select
+                      value={exportOptions.watermark}
+                      onChange={(e) => setExportOptions({ ...exportOptions, watermark: e.target.value })}
+                    >
+                      <option>Include a watermark</option>
+                      <option>No watermark</option>
+                    </select>
+                  </div>
+
+                  {isExporting && (
+                    <div className="export-progress-container">
+                      <div className="progress-label">Preparing: {exportProgress}%</div>
+                      <div className="progress-bar-bg">
+                        <div className="progress-bar-fill" style={{ width: `${exportProgress}%` }}></div>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    className="btn-primary full-width"
+                    style={{ marginTop: '20px', position: 'relative' }}
+                    disabled={isExporting}
+                    onClick={() => {
+                      const type = exportOptions.fileType;
+                      if (type === 'video') {
+                        exportAsVideoPro();
+                      } else if (type === 'gif') {
+                        exportAsGIF();
+                      } else if (type === 'png') {
+                        exportAsPNG();
+                      } else if (type === 'svg') {
+                        exportAsSVG();
+                      } else if (type === 'emoji') {
+                        exportAsEmoji();
+                      } else if (type === 'frames_zip') {
+                        exportAsFramesZip();
+                      } else {
+                        exportAsLoMoji();
+                      }
+
+                      if (type !== 'video' && type !== 'gif') setShowExportModal(false);
+                    }}
+                  >
+                    {isExporting ? 'Encoding...' : 'Download'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
 

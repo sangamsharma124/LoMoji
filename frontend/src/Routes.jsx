@@ -90,6 +90,22 @@ const AppRoutes = () => {
         }
       />
       <Route
+        path="/editor/:dashboardId"
+        element={
+          <ProtectedRoute>
+            <AnimationToolPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/editor"
+        element={
+          <ProtectedRoute>
+            <AnimationToolPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/timeline-demo"
         element={<TimelineDemo />}
       />

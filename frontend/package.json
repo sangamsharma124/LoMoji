@@ -18,8 +18,10 @@
     "@tailwindcss/typography": "^0.5.16",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "gifshot": "^0.4.5",
     "is-number": "^7.0.0",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
     "jwt-decode": "^4.0.0",
     "mongodb": "^6.17.0",
     "mongoose": "^8.16.3",
@@ -27,7 +29,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.28.0",
-    "recharts": "^2.15.2"
+    "recharts": "^2.15.2",
+    "ua-parser-js": "^2.0.9"
   },
   "devDependencies": {
     "@types/react": "^18.2.45",
